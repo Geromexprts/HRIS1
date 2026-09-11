@@ -3,6 +3,8 @@ import GoogleProvider from 'next-auth/providers/google'
 import { supabaseAdmin } from '@/lib/supabase'
 import type { NextAuthOptions } from 'next-auth'
 
+const ALLOWED_DOMAINS = ['xprts.com', 'baylegal.com']
+
 const useGoogle = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 
 export const authOptions: NextAuthOptions = {
@@ -42,9 +44,28 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async signIn({ user, account }) {
+      if (account?.provider === 'google') {
+        const email = user.email ?? ''
+        const domain = email.split('@')[1] ?? ''
+        if (!ALLOWED_DOMAINS.includes(domain)) return false
+
+        const { data: employee } = await supabaseAdmin
+          .from('employees')
+          .select('id, name, role, status')
+          .eq('work_email', email)
+          .single()
+
+        if (!employee || employee.status !== 'active') return '/login?error=not_registered'
+
+        ;(user as any).dbId = employee.id
+        ;(user as any).role = employee.role
+      }
+      return true
+    },
+    async jwt({ token, user, account }) {
       if (user) {
-        token.id = user.id
+        token.id = account?.provider === 'google' ? (user as any).dbId : user.id
         token.role = (user as any).role
       }
       return token

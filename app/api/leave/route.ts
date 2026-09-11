@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sendLeaveSubmittedEmail } from '@/lib/email'
 
 function calcBusinessDays(startStr: string, endStr: string): number {
   let count = 0
@@ -60,10 +61,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Fetch employee record (approver_id, employment_start_date)
+  // Fetch employee record (name, approver_id, employment_start_date)
   const { data: employee } = await supabaseAdmin
     .from('employees')
-    .select('approver_id, employment_start_date')
+    .select('name, approver_id, employment_start_date')
     .eq('id', session.user.id)
     .single()
 
@@ -108,7 +109,35 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Attach a warning if balance is low (but still allow submission)
+  // Notify approver by email and in-app
+  if (employee?.approver_id) {
+    const { data: approver } = await supabaseAdmin
+      .from('employees')
+      .select('name, work_email')
+      .eq('id', employee.approver_id)
+      .single()
+
+    await Promise.all([
+      supabaseAdmin.from('notifications').insert({
+        employee_id: employee.approver_id,
+        title: 'New Leave Request',
+        body: `${employee.name} submitted a ${days_requested}-day leave request (${start_date}${effectiveEndDate !== start_date ? ` – ${effectiveEndDate}` : ''}).`,
+      }),
+      approver?.work_email
+        ? sendLeaveSubmittedEmail({
+            toEmail: approver.work_email,
+            toName: approver.name ?? 'there',
+            employeeName: employee.name ?? session.user.email ?? 'An employee',
+            leaveType: leave_type || 'pto',
+            daysRequested: days_requested,
+            startDate: start_date,
+            endDate: effectiveEndDate,
+            reason: reason || null,
+          })
+        : Promise.resolve(),
+    ])
+  }
+
   const response = { ...data, _warning: ptoBalance < days_requested ? `Low PTO balance: ${ptoBalance} days available` : undefined }
   return NextResponse.json(response, { status: 201 })
 }
