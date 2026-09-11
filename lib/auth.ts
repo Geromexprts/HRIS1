@@ -1,4 +1,3 @@
-import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import { supabaseAdmin } from '@/lib/supabase'
 import type { NextAuthOptions } from 'next-auth'
@@ -10,42 +9,11 @@ const EMAIL_ALIASES: Record<string, string> = {
   'geromemontealegre@baylegal.com': 'geromemontealegre@xprts.com',
 }
 
-const useGoogle = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-
 export const authOptions: NextAuthOptions = {
   providers: [
-    ...(useGoogle
-      ? [
-          GoogleProvider({
-            clientId: process.env.GOOGLE_CLIENT_ID!,
-            clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-          }),
-        ]
-      : []),
-    CredentialsProvider({
-      name: 'Email',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null
-
-        const { data: employee, error } = await supabaseAdmin
-          .from('employees')
-          .select('id, name, work_email, role, status')
-          .eq('work_email', credentials.email)
-          .single()
-
-        if (error || !employee || employee.status !== 'active') return null
-
-        return {
-          id: employee.id,
-          name: employee.name,
-          email: employee.work_email,
-          role: employee.role,
-        }
-      },
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
   callbacks: {

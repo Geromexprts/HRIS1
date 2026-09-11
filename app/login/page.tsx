@@ -1,16 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { signIn, useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Suspense } from 'react'
 
-export default function LoginPage() {
-  const { data: session, status } = useSession()
+function LoginContent() {
+  const { status } = useSession()
   const router = useRouter()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
+  const error = searchParams.get('error')
 
   useEffect(() => {
     if (status === 'authenticated') {
@@ -26,19 +25,6 @@ export default function LoginPage() {
     )
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setLoading(true)
-    setError('')
-    const result = await signIn('credentials', { email, password, redirect: false })
-    if (result?.error) {
-      setError('Email not found or account inactive.')
-      setLoading(false)
-    } else {
-      router.push('/dashboard')
-    }
-  }
-
   return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
@@ -50,19 +36,29 @@ export default function LoginPage() {
             HRIS Portal
           </div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
-            Sign in to your account
+            Sign in with your work account
           </div>
         </div>
 
         <div className="card" style={{ padding: '28px 28px' }}>
-          {/* Google sign-in */}
+          {error === 'not_registered' && (
+            <p style={{ fontSize: 12.5, color: 'var(--red)', background: 'var(--red-soft)', padding: '8px 12px', borderRadius: 7, marginBottom: 16 }}>
+              Your account is not registered. Contact your administrator.
+            </p>
+          )}
+          {error && error !== 'not_registered' && (
+            <p style={{ fontSize: 12.5, color: 'var(--red)', background: 'var(--red-soft)', padding: '8px 12px', borderRadius: 7, marginBottom: 16 }}>
+              Sign-in failed. Please try again.
+            </p>
+          )}
+
           <button
             onClick={() => signIn('google', { callbackUrl: '/dashboard' })}
             style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              gap: 10, padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)',
-              background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13.5,
-              fontWeight: 600, cursor: 'pointer', marginBottom: 20,
+              gap: 10, padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 14,
+              fontWeight: 600, cursor: 'pointer',
             }}
           >
             <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
@@ -74,38 +70,19 @@ export default function LoginPage() {
             Sign in with Google
           </button>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>or</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          </div>
-
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <label className="field-label">Work Email</label>
-              <input
-                type="email" value={email} onChange={e => setEmail(e.target.value)}
-                required placeholder="you@xprts.com" className="field-input"
-              />
-            </div>
-            <div>
-              <label className="field-label">Password</label>
-              <input
-                type="password" value={password} onChange={e => setPassword(e.target.value)}
-                required placeholder="••••••••" className="field-input"
-              />
-            </div>
-            {error && (
-              <p style={{ fontSize: 12.5, color: 'var(--red)', background: 'var(--red-soft)', padding: '8px 12px', borderRadius: 7 }}>
-                {error}
-              </p>
-            )}
-            <button type="submit" disabled={loading} className="btn btn-primary" style={{ marginTop: 4 }}>
-              {loading ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
+          <p style={{ fontSize: 11.5, color: 'var(--text-muted)', textAlign: 'center', marginTop: 16 }}>
+            Use your @xprts.com or @baylegal.com account
+          </p>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   )
 }
