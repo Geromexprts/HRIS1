@@ -5,6 +5,11 @@ import type { NextAuthOptions } from 'next-auth'
 
 const ALLOWED_DOMAINS = ['xprts.com', 'baylegal.com']
 
+// Maps alternate emails to a canonical work_email in the employees table
+const EMAIL_ALIASES: Record<string, string> = {
+  'geromemontealegre@baylegal.com': 'geromemontealegre@xprts.com',
+}
+
 const useGoogle = !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
 
 export const authOptions: NextAuthOptions = {
@@ -50,10 +55,12 @@ export const authOptions: NextAuthOptions = {
         const domain = email.split('@')[1] ?? ''
         if (!ALLOWED_DOMAINS.includes(domain)) return false
 
+        const lookupEmail = EMAIL_ALIASES[email] ?? email
+
         const { data: employee } = await supabaseAdmin
           .from('employees')
           .select('id, name, role, status')
-          .eq('work_email', email)
+          .eq('work_email', lookupEmail)
           .single()
 
         if (!employee || employee.status !== 'active') return '/login?error=not_registered'
