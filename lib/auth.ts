@@ -20,8 +20,9 @@ export const authOptions: NextAuthOptions = {
     async signIn({ user, account }) {
       if (account?.provider === 'google') {
         const email = user.email ?? ''
-        const domain = email.split('@')[1] ?? ''
-        if (!ALLOWED_DOMAINS.includes(domain)) return false
+        // TODO: re-enable domain restriction before go-live
+        // const domain = email.split('@')[1] ?? ''
+        // if (!ALLOWED_DOMAINS.includes(domain)) return false
 
         const lookupEmail = EMAIL_ALIASES[email] ?? email
 
