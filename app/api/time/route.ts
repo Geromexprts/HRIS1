@@ -4,13 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, isPayPeriodLocked } from '@/lib/dates'
 
-function calcTotalHours(clockIn: string, clockOut: string, breaks: { start: string; end: string }[]) {
+function calcTotalHours(clockIn: string, clockOut: string) {
   const totalMs = new Date(clockOut).getTime() - new Date(clockIn).getTime()
-  const breakMs = breaks.reduce((acc, b) => {
-    if (b.start && b.end) return acc + (new Date(b.end).getTime() - new Date(b.start).getTime())
-    return acc
-  }, 0)
-  return Math.round(((totalMs - breakMs) / 3600000) * 100) / 100
+  return Math.max(0, Math.round((totalMs / 3600000 - 1) * 100) / 100)
 }
 
 
@@ -45,43 +41,26 @@ export async function POST(req: NextRequest) {
 
   if (!existing) return NextResponse.json({ error: 'No active entry for today' }, { status: 400 })
 
-  const breaks: { start: string; end: string }[] = existing.breaks ?? []
-
-  if (action === 'start_break') {
-    const updatedBreaks = [...breaks, { start: now, end: '' }]
-    const { data, error } = await supabaseAdmin
-      .from('time_entries')
-      .update({ breaks: updatedBreaks })
-      .eq('id', existing.id)
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
-  }
-
-  if (action === 'end_break') {
-    const updatedBreaks = breaks.map((b, i) =>
-      i === breaks.length - 1 && !b.end ? { ...b, end: now } : b
-    )
-    const { data, error } = await supabaseAdmin
-      .from('time_entries')
-      .update({ breaks: updatedBreaks })
-      .eq('id', existing.id)
-      .select()
-      .single()
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json(data)
-  }
-
   if (action === 'clock_out') {
-    const closedBreaks = breaks.map(b => (!b.end ? { ...b, end: now } : b))
-    const totalHours = calcTotalHours(existing.clock_in, now, closedBreaks)
+    const totalHours = calcTotalHours(existing.clock_in, now)
 
     const { data, error } = await supabaseAdmin
       .from('time_entries')
-      .update({ clock_out: now, breaks: closedBreaks, total_hours: totalHours })
+      .update({ clock_out: now, total_hours: totalHours })
+      .eq('id', existing.id)
+      .select()
+      .single()
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json(data)
+  }
+
+  if (action === 'resume') {
+    if (!existing.clock_out) return NextResponse.json({ error: 'Not clocked out' }, { status: 400 })
+
+    const { data, error } = await supabaseAdmin
+      .from('time_entries')
+      .update({ clock_out: null, total_hours: null })
       .eq('id', existing.id)
       .select()
       .single()
@@ -130,7 +109,7 @@ export async function PUT(req: NextRequest) {
 
   // Recalculate total hours with edited times
   const totalHours = clock_in && clock_out
-    ? calcTotalHours(clock_in, clock_out, existing.breaks ?? [])
+    ? calcTotalHours(clock_in, clock_out)
     : existing.total_hours
 
   const { data, error } = await supabaseAdmin

@@ -3,13 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
-function calcTotalHours(clockIn: string, clockOut: string, breaks: { start: string; end: string }[]) {
+function calcTotalHours(clockIn: string, clockOut: string) {
   const totalMs = new Date(clockOut).getTime() - new Date(clockIn).getTime()
-  const breakMs = breaks.reduce((acc, b) => {
-    if (b.start && b.end) return acc + (new Date(b.end).getTime() - new Date(b.start).getTime())
-    return acc
-  }, 0)
-  return Math.round(((totalMs - breakMs) / 3600000) * 100) / 100
+  return Math.max(0, Math.round((totalMs / 3600000 - 1) * 100) / 100)
 }
 
 export async function PUT(req: NextRequest) {
@@ -43,7 +39,7 @@ export async function PUT(req: NextRequest) {
   })
 
   const totalHours = clock_in && clock_out
-    ? calcTotalHours(clock_in, clock_out, existing.breaks ?? [])
+    ? calcTotalHours(clock_in, clock_out)
     : existing.total_hours
 
   const { data, error } = await supabaseAdmin

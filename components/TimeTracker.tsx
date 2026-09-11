@@ -4,11 +4,10 @@ import { useState, useEffect } from 'react'
 
 const LA_TZ = 'America/Los_Angeles'
 
-type Break = { start: string; end: string }
 type TimeEntry = {
   id: string; date: string
   clock_in: string | null; clock_out: string | null
-  breaks: Break[]; total_hours: number | null
+  total_hours: number | null
   is_edited: boolean; edit_note: string | null
 }
 
@@ -58,8 +57,6 @@ function isLocked(dateStr: string) {
 function getStatus(entry: TimeEntry | null) {
   if (!entry?.clock_in) return 'not_started'
   if (entry.clock_out) return 'clocked_out'
-  const last = (entry.breaks ?? []).at(-1)
-  if (last && !last.end) return 'on_break'
   return 'clocked_in'
 }
 
@@ -167,16 +164,10 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
   const status = getStatus(entry)
 
   useEffect(() => {
-    if (status !== 'clocked_in' && status !== 'on_break') return
+    if (status !== 'clocked_in') return
     const interval = setInterval(() => {
       if (!entry?.clock_in) return
-      const breaks = entry.breaks ?? []
-      const breakMs = breaks.reduce((acc, b) => {
-        if (b.start && b.end) return acc + (new Date(b.end).getTime() - new Date(b.start).getTime())
-        if (b.start && !b.end) return acc + (Date.now() - new Date(b.start).getTime())
-        return acc
-      }, 0)
-      const totalMs = Math.max(0, Date.now() - new Date(entry.clock_in).getTime() - breakMs)
+      const totalMs = Math.max(0, Date.now() - new Date(entry.clock_in).getTime())
       const h = Math.floor(totalMs / 3600000)
       const m = Math.floor((totalMs % 3600000) / 60000)
       const s = Math.floor((totalMs % 60000) / 1000)
@@ -217,8 +208,8 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
             <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
               {toDate(new Date().toISOString().split('T')[0])} · PST
             </div>
-            {(status === 'clocked_in' || status === 'on_break') ? (
-              <div className="clock-display" style={{ color: status === 'on_break' ? 'var(--amber)' : 'var(--text-primary)' }}>
+            {status === 'clocked_in' ? (
+              <div className="clock-display">
                 {elapsed}
               </div>
             ) : status === 'clocked_out' ? (
@@ -231,7 +222,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
             {entry?.clock_in && (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
                 <span>In: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_in)}</strong></span>
-                {(status === 'clocked_in' || status === 'on_break') && (
+                {status === 'clocked_in' && (
                   <button
                     onClick={() => setEditingStart(true)}
                     title="Edit start time"
@@ -243,7 +234,6 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
               </div>
             )}
             {entry?.clock_out && <div>Out: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_out)}</strong></div>}
-            {status === 'on_break' && <span className="badge badge-amber">On break</span>}
             {status === 'clocked_in' && <span className="badge badge-green">Active</span>}
           </div>
         </div>
@@ -253,31 +243,23 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
             <button onClick={() => doAction('clock_in')} disabled={loading} className="btn btn-green">Clock In</button>
           )}
           {status === 'clocked_in' && (
-            <>
-              <button onClick={() => doAction('start_break')} disabled={loading} className="btn btn-amber">Start Break</button>
-              <button onClick={() => doAction('clock_out')} disabled={loading} className="btn btn-red">Clock Out</button>
-            </>
-          )}
-          {status === 'on_break' && (
-            <button onClick={() => doAction('end_break')} disabled={loading} className="btn btn-primary">Resume</button>
+            <button onClick={() => doAction('clock_out')} disabled={loading} className="btn btn-red">Clock Out</button>
           )}
           {status === 'clocked_out' && entry && !isLocked(entry.date) && (
-            <button onClick={() => setEditingEntry(entry)} className="btn btn-ghost">Edit Today's Entry</button>
+            <>
+              <button onClick={() => doAction('resume')} disabled={loading} className="btn btn-primary">Resume</button>
+              <button onClick={() => setEditingEntry(entry)} className="btn btn-ghost">Edit Entry</button>
+            </>
           )}
           {status === 'clocked_out' && entry && isLocked(entry.date) && (
             <span style={{ fontSize: 12.5, color: 'var(--text-muted)', padding: '8px 0' }}>Pay period locked — no further edits.</span>
           )}
         </div>
 
-        {(entry?.breaks ?? []).length > 0 && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: 6 }}>Breaks</div>
-            {entry!.breaks.map((b, i) => (
-              <div key={i} style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                {toTime(b.start)} → {b.end ? toTime(b.end) : <span style={{ color: 'var(--amber)' }}>ongoing</span>}
-              </div>
-            ))}
-          </div>
+        {status === 'clocked_in' && (
+          <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 12 }}>
+            1-hour break is automatically deducted on clock out.
+          </p>
         )}
       </div>
 
@@ -294,7 +276,6 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
                   <th>Date</th>
                   <th>Clock In</th>
                   <th>Clock Out</th>
-                  <th>Breaks</th>
                   <th>Hours</th>
                   <th></th>
                 </tr>
@@ -308,11 +289,6 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
                     </td>
                     <td>{e.clock_in ? toTime(e.clock_in) : '—'}</td>
                     <td>{e.clock_out ? toTime(e.clock_out) : '—'}</td>
-                    <td style={{ fontSize: 12 }}>
-                      {(e.breaks ?? []).length === 0 ? '—' : e.breaks.map((b, i) => (
-                        <div key={i}>{toTime(b.start)} → {b.end ? toTime(b.end) : <span style={{ color: 'var(--amber)' }}>ongoing</span>}</div>
-                      ))}
-                    </td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{e.total_hours ?? '—'}</td>
                     <td>
                       {e.clock_out && !isLocked(e.date)
