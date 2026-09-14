@@ -59,7 +59,6 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
   const [employmentType, setEmploymentType] = useState(employee?.employment_type ?? 'full-time')
   const [employeeCode, setEmployeeCode] = useState(employee?.employee_code ?? '')
   const [shiftSchedule, setShiftSchedule] = useState(employee?.shift_schedule ?? '')
-  const [payslipDelivery, setPayslipDelivery] = useState(employee?.payslip_delivery ?? 'email')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -92,7 +91,6 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
           employment_type: employmentType,
           employee_code: employeeCode || null,
           shift_schedule: shiftSchedule || null,
-          payslip_delivery: payslipDelivery || 'email',
         }
       : {
           name,
@@ -106,7 +104,6 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
           employment_type: employmentType,
           employee_code: employeeCode || null,
           shift_schedule: shiftSchedule || null,
-          payslip_delivery: payslipDelivery || 'email',
         }
 
     const res = await fetch('/api/admin/employees', {
@@ -229,14 +226,6 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
               <input value={shiftSchedule} onChange={e => setShiftSchedule(e.target.value)} className="field-input" placeholder="e.g. Mon–Fri 9am–6pm PT" />
             </div>
 
-            <div>
-              <label className="field-label">Payslip Delivery</label>
-              <select value={payslipDelivery} onChange={e => setPayslipDelivery(e.target.value)} className="field-input">
-                <option value="email">Email</option>
-                <option value="portal">Portal Only</option>
-                <option value="physical">Physical</option>
-              </select>
-            </div>
           </div>
 
           {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
@@ -259,6 +248,9 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
   const [showModal, setShowModal] = useState(false)
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('active')
   const [search, setSearch] = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
 
   const visible = employees.filter(e => {
     if (filter !== 'all' && e.status !== filter) return false
@@ -275,6 +267,27 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
     setShowModal(false)
   }
 
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    setDeleteError('')
+    const res = await fetch('/api/admin/employees', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      setDeleteError(data.error ?? 'Failed to delete.')
+      setDeletingId(null)
+      return
+    }
+    setEmployees(prev => prev.filter(e => e.id !== id))
+    setDeleteConfirmId(null)
+    setDeletingId(null)
+  }
+
+  const deleteTarget = employees.find(e => e.id === deleteConfirmId)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {showModal && (
@@ -284,6 +297,29 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
           onClose={() => setShowModal(false)}
           onSave={handleSave}
         />
+      )}
+
+      {deleteConfirmId && deleteTarget && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 380 }}>
+            <div className="modal-title">Delete Employee</div>
+            <div className="modal-sub">
+              This will permanently delete <strong>{deleteTarget.name}</strong> and all their time entries, leave requests, and payroll records. This cannot be undone.
+            </div>
+            {deleteError && <p style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 12 }}>{deleteError}</p>}
+            <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+              <button
+                onClick={() => handleDelete(deleteConfirmId)}
+                disabled={!!deletingId}
+                className="btn btn-red"
+                style={{ flex: 1 }}
+              >
+                {deletingId ? 'Deleting…' : 'Delete Permanently'}
+              </button>
+              <button onClick={() => { setDeleteConfirmId(null); setDeleteError('') }} className="btn btn-ghost">Cancel</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
@@ -387,12 +423,20 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
                     </td>
                     <td><span className={`badge ${e.status === 'active' ? 'badge-green' : 'badge-gray'}`}>{e.status}</span></td>
                     <td>
-                      <button
-                        onClick={() => { setModalEmployee(e); setShowModal(true) }}
-                        style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                      >
-                        Edit
-                      </button>
+                      <div style={{ display: 'flex', gap: 10 }}>
+                        <button
+                          onClick={() => { setModalEmployee(e); setShowModal(true) }}
+                          style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => { setDeleteConfirmId(e.id); setDeleteError('') }}
+                          style={{ fontSize: 12, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

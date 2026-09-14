@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule, payslip_delivery } = await req.json()
+  const { name, work_email, role, office_location, employment_start_date, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule } = await req.json()
 
   if (!name || !work_email || !role || !office_location || !employment_start_date) {
     return NextResponse.json({ error: 'All required fields must be filled.' }, { status: 400 })
@@ -51,7 +51,6 @@ export async function POST(req: NextRequest) {
       employee_code: employee_code || null,
       manager_id: manager_id || null,
       shift_schedule: shift_schedule || null,
-      payslip_delivery: payslip_delivery || 'email',
     })
     .select()
     .single()
@@ -68,7 +67,7 @@ export async function PUT(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { id, name, role, status, office_location, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule, payslip_delivery } = await req.json()
+  const { id, name, role, status, office_location, monthly_salary, approver_id, employment_type, employee_code, manager_id, shift_schedule } = await req.json()
   if (!id) return NextResponse.json({ error: 'Employee ID required.' }, { status: 400 })
 
   // Fetch current salary for audit trail
@@ -85,7 +84,6 @@ export async function PUT(req: NextRequest) {
   if (employee_code !== undefined) updates.employee_code = employee_code || null
   if (manager_id !== undefined) updates.manager_id = manager_id || null
   if (shift_schedule !== undefined) updates.shift_schedule = shift_schedule || null
-  if (payslip_delivery !== undefined) updates.payslip_delivery = payslip_delivery || 'email'
 
   const { data, error } = await supabaseAdmin
     .from('employees')
@@ -111,4 +109,21 @@ export async function PUT(req: NextRequest) {
   }
 
   return NextResponse.json(data)
+}
+
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { id } = await req.json()
+  if (!id) return NextResponse.json({ error: 'Employee ID required.' }, { status: 400 })
+
+  if (id === session.user.id) {
+    return NextResponse.json({ error: 'You cannot delete your own account.' }, { status: 400 })
+  }
+
+  const { error } = await supabaseAdmin.from('employees').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ success: true })
 }

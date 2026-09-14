@@ -102,6 +102,77 @@ function laInputToUTC(localStr: string): string {
   return new Date(utcGuess + offsetMs).toISOString()
 }
 
+// ── AddEntryModal ─────────────────────────────────────────────────────────────
+
+function AddEntryModal({ employees, onClose, onSave }: {
+  employees: Employee[]; onClose: () => void; onSave: (entry: TimeEntry) => void
+}) {
+  const [empId, setEmpId] = useState(employees[0]?.id ?? '')
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [clockIn, setClockIn] = useState('')
+  const [clockOut, setClockOut] = useState('')
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!empId || !date || !clockIn) { setError('Employee, date, and clock-in are required.'); return }
+    setSaving(true)
+    const res = await fetch('/api/admin/time', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        employee_id: empId, date,
+        clock_in: laInputToUTC(`${date}T${clockIn}`),
+        clock_out: clockOut ? laInputToUTC(`${date}T${clockOut}`) : null,
+        edit_note: note || null,
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
+    onSave(data)
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Add Past Time Entry</div>
+        <div className="modal-sub">Create a new entry for a date with no existing record. <span style={{ color: 'var(--accent)' }}>All times in PST</span></div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label className="field-label">Employee</label>
+            <select value={empId} onChange={e => setEmpId(e.target.value)} className="field-input">
+              {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="field-label">Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className="field-input" />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <div>
+              <label className="field-label">Clock In (PST)</label>
+              <input type="time" value={clockIn} onChange={e => setClockIn(e.target.value)} className="field-input" />
+            </div>
+            <div>
+              <label className="field-label">Clock Out (PST) <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+              <input type="time" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" />
+            </div>
+          </div>
+          <div>
+            <label className="field-label">Note <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. employee forgot to clock in" className="field-input" />
+          </div>
+          {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>{saving ? 'Saving…' : 'Add Entry'}</button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
 function EditModal({ entry, employeeName, onClose, onSave }: {
@@ -176,6 +247,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   const [nowMs, setNowMs] = useState(Date.now())
   const [allEntries, setAllEntries] = useState<TimeEntry[]>(entries)
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  const [addingEntry, setAddingEntry] = useState(false)
   const [empFilter, setEmpFilter] = useState<string>('all')
   const [refreshing, setRefreshing] = useState(false)
 
@@ -682,6 +754,16 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
           }}
         />
       )}
+      {addingEntry && (
+        <AddEntryModal
+          employees={employees}
+          onClose={() => setAddingEntry(false)}
+          onSave={newEntry => {
+            setAllEntries(prev => [...prev, newEntry])
+            setAddingEntry(false)
+          }}
+        />
+      )}
 
       {/* Top controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -707,6 +789,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
           <option value="all">All Employees</option>
           {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
         </select>
+        <button onClick={() => setAddingEntry(true)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}>
+          + Add Entry
+        </button>
         <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }}>
           {refreshing ? 'Refreshing…' : '↻ Refresh'}
         </button>

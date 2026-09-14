@@ -172,7 +172,6 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   { label: 'Manager', value: managerName ?? '—' },
                   { label: 'Approver', value: approverName ?? '—' },
                   { label: 'Shift', value: emp.shift_schedule ?? '—' },
-                  { label: 'Payslip Delivery', value: emp.payslip_delivery ?? 'email' },
                 ].map(row => (
                   <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
