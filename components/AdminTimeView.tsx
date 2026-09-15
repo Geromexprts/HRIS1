@@ -248,6 +248,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   const [allEntries, setAllEntries] = useState<TimeEntry[]>(entries)
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [addingEntry, setAddingEntry] = useState(false)
+  const [monthEntriesEmp, setMonthEntriesEmp] = useState<Employee | null>(null)
   const [empFilter, setEmpFilter] = useState<string>('all')
   const [refreshing, setRefreshing] = useState(false)
 
@@ -552,15 +553,23 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                 {(empFilter === 'all' ? rows : rows.filter(r => r.emp.id === empFilter)).map(({ emp, dayHours, total, totalOT }) => (
                   <tr key={emp.id}>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
-                    {dayHours.map((h, i) => (
-                      <td key={i} style={{
-                        textAlign: 'center', fontSize: 12.5, fontVariantNumeric: 'tabular-nums',
-                        color: h == null ? 'var(--text-muted)' : h > 8 ? 'var(--amber)' : h < 4 ? 'var(--text-muted)' : 'var(--text-primary)',
-                        fontWeight: h != null && h > 8 ? 600 : 400,
-                      }}>
-                        {h != null ? fmtH(Math.round(h * 10) / 10) : '—'}
-                      </td>
-                    ))}
+                    {dayHours.map((h, i) => {
+                      const dayEntry = byEmpDate[emp.id]?.[weekDays[i]]
+                      return (
+                        <td key={i} style={{
+                          textAlign: 'center', fontSize: 12.5, fontVariantNumeric: 'tabular-nums',
+                          color: h == null ? 'var(--text-muted)' : h > 8 ? 'var(--amber)' : h < 4 ? 'var(--text-muted)' : 'var(--text-primary)',
+                          fontWeight: h != null && h > 8 ? 600 : 400,
+                        }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <span>{h != null ? fmtH(Math.round(h * 10) / 10) : '—'}</span>
+                            {dayEntry && (
+                              <button onClick={() => setEditingEntry(dayEntry)} style={{ fontSize: 10, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1 }}>edit</button>
+                            )}
+                          </div>
+                        </td>
+                      )
+                    })}
                     <td style={{ textAlign: 'center', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtH(Math.round(total * 10) / 10)}</td>
                     <td style={{ textAlign: 'center', color: totalOT > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: totalOT > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                       {totalOT > 0 ? `+${fmtH(Math.round(totalOT * 10) / 10)}` : '—'}
@@ -633,6 +642,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                   <th>Total Hours</th>
                   <th>Regular</th>
                   <th>OT Hours</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -650,6 +660,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                     <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmtH(Math.round(regularHrs * 10) / 10)}</td>
                     <td style={{ color: totalOT > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: totalOT > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                       {totalOT > 0 ? `+${fmtH(Math.round(totalOT * 10) / 10)}` : '—'}
+                    </td>
+                    <td>
+                      <button onClick={() => setMonthEntriesEmp(emp)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Entries</button>
                     </td>
                   </tr>
                 ))}
@@ -764,6 +777,57 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
           }}
         />
       )}
+
+      {monthEntriesEmp && (() => {
+        const empEntries = monthDays
+          .map(d => byEmpDate[monthEntriesEmp.id]?.[d])
+          .filter((e): e is TimeEntry => !!e)
+        return (
+          <div className="modal-overlay">
+            <div className="modal" style={{ maxWidth: 560 }}>
+              <div className="modal-title">{monthEntriesEmp.name} — This Month</div>
+              <div className="modal-sub">Click Edit on any entry to modify it.</div>
+              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+                <table className="data-table" style={{ width: '100%' }}>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Clock In</th>
+                      <th>Clock Out</th>
+                      <th>Hours</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {empEntries.length === 0
+                      ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>No entries this month.</td></tr>
+                      : empEntries.map(e => (
+                        <tr key={e.id}>
+                          <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
+                          <td style={{ fontSize: 12.5 }}>{e.clock_in ? laTime(e.clock_in) : '—'}</td>
+                          <td style={{ fontSize: 12.5 }}>{e.clock_out ? laTime(e.clock_out) : '—'}</td>
+                          <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtH(e.total_hours)}</td>
+                          <td>
+                            <button
+                              onClick={() => { setEditingEntry(e); setMonthEntriesEmp(null) }}
+                              style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                            >
+                              Edit
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    }
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 20 }}>
+                <button onClick={() => setMonthEntriesEmp(null)} className="btn btn-ghost" style={{ width: '100%' }}>Close</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Top controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
