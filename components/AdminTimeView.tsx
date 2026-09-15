@@ -233,14 +233,15 @@ function StatusBadge({ entry, today, nowMs }: { entry?: TimeEntry; today: string
 
 // ── AdminTimeView ─────────────────────────────────────────────────────────────
 
-export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, monthStart }: {
+export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd }: {
   employees: Employee[]
   entries: TimeEntry[]
   edits: AuditEntry[]
   today: string
   yesterday: string
   weekStart: string
-  monthStart: string
+  periodStart: string
+  periodEnd: string
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'today' | 'yesterday' | 'weekly' | 'monthly' | 'edits'>('today')
@@ -274,8 +275,8 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   )
 
   const weekDays = genDays(weekStart, today)
-  const monthDays = genDays(monthStart, today)
-  const monthBizDays = bizDays(monthDays)
+  const periodDays = genDays(periodStart, periodEnd)
+  const periodBizDays = bizDays(periodDays)
 
   const visibleEmps = empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter)
 
@@ -605,7 +606,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
 
   function renderMonthly() {
     const rows = employees.map(emp => {
-      const empEntries = monthDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
+      const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
       const total = empEntries.reduce((s: number, e) => s + (e ? (entryHours(e, nowMs) ?? 0) : 0), 0)
       const regularHrs = empEntries.reduce((s: number, e) => {
         const h = e ? entryHours(e, nowMs) : null
@@ -613,7 +614,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
       }, 0)
       const totalOT = Math.max(0, total - regularHrs)
       const daysPresent = empEntries.filter(e => e?.clock_in).length
-      const attendance = monthBizDays > 0 ? Math.round((daysPresent / monthBizDays) * 100) : 0
+      const attendance = periodBizDays > 0 ? Math.round((daysPresent / periodBizDays) * 100) : 0
       return { emp, total, regularHrs, totalOT, daysPresent, attendance }
     })
 
@@ -626,7 +627,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           <div className="stat-card"><div className="stat-label">Total Hours</div><div className="stat-value" style={{ fontSize: 22 }}>{fmtH(Math.round(grandTotal * 10) / 10)}</div></div>
           <div className="stat-card"><div className="stat-label">OT Hours</div><div className="stat-value" style={{ fontSize: 22, color: grandOT > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>{fmtH(Math.round(grandOT * 10) / 10)}</div></div>
-          <div className="stat-card"><div className="stat-label">Business Days</div><div className="stat-value" style={{ fontSize: 22 }}>{monthBizDays}</div></div>
+          <div className="stat-card"><div className="stat-label">Business Days</div><div className="stat-value" style={{ fontSize: 22 }}>{periodBizDays}</div></div>
           <div className="stat-card"><div className="stat-label">Avg Attendance</div><div className="stat-value" style={{ fontSize: 22, color: avgAtt < 80 ? 'var(--amber)' : 'var(--green)' }}>{avgAtt}%</div></div>
         </div>
 
@@ -650,7 +651,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                   <tr key={emp.id}>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
                     <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{monthBizDays}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
                     <td>
                       <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                         {attendance}%
@@ -779,13 +780,13 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
       )}
 
       {monthEntriesEmp && (() => {
-        const empEntries = monthDays
+        const empEntries = periodDays
           .map(d => byEmpDate[monthEntriesEmp.id]?.[d])
           .filter((e): e is TimeEntry => !!e)
         return (
           <div className="modal-overlay">
             <div className="modal" style={{ maxWidth: 560 }}>
-              <div className="modal-title">{monthEntriesEmp.name} — This Month</div>
+              <div className="modal-title">{monthEntriesEmp.name} — This Pay Period</div>
               <div className="modal-sub">Click Edit on any entry to modify it.</div>
               <div style={{ maxHeight: 400, overflowY: 'auto' }}>
                 <table className="data-table" style={{ width: '100%' }}>
@@ -836,7 +837,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
             { key: 'today', label: 'Today' },
             { key: 'yesterday', label: 'Yesterday' },
             { key: 'weekly', label: 'This Week' },
-            { key: 'monthly', label: 'This Month' },
+            { key: 'monthly', label: 'This Pay Period' },
             { key: 'edits', label: 'Edit Log' },
           ] as { key: typeof tab; label: string }[]).map(t => (
             <button key={t.key} onClick={() => setTab(t.key)} className={`tab-btn ${tab === t.key ? 'active' : ''}`}>

@@ -25,10 +25,8 @@ export default async function AdminTimePage() {
   weekStartJs.setDate(todayJs.getDate() - daysToMon)
   const weekStart = weekStartJs.toLocaleDateString('en-CA', { timeZone: 'UTC' })
 
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
-
   // Fetch from earliest needed date
-  const fetchFrom = [monthStart, periodStart, weekStart].sort()[0]
+  const fetchFrom = [periodStart, weekStart].sort()[0]
 
   const { data: employees } = await supabaseAdmin
     .from('employees')
@@ -63,7 +61,8 @@ export default async function AdminTimePage() {
         today={today}
         yesterday={yesterday}
         weekStart={weekStart}
-        monthStart={monthStart}
+        periodStart={periodStart}
+        periodEnd={periodEnd}
       />
     </div>
   )
