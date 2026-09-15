@@ -85,6 +85,7 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
           role,
           status,
           office_location: location,
+          employment_start_date: startDate,
           monthly_salary: salaryValue,
           approver_id: approverId || null,
           manager_id: managerId || null,
@@ -171,12 +172,10 @@ function EmployeeModal({ employee, allEmployees, onClose, onSave }: {
               <input value={employeeCode} onChange={e => setEmployeeCode(e.target.value)} className="field-input" placeholder="e.g. EMP-001" />
             </div>
 
-            {!isEdit && (
-              <div style={{ gridColumn: '1 / -1' }}>
-                <label className="field-label">Start Date *</label>
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="field-input" />
-              </div>
-            )}
+            <div style={{ gridColumn: '1 / -1' }}>
+              <label className="field-label">Start Date *</label>
+              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="field-input" />
+            </div>
 
             {isEdit && (
               <div style={{ gridColumn: '1 / -1' }}>
