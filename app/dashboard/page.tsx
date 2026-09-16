@@ -644,6 +644,7 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
         <div className="stat-card">
           <div className="stat-label">PTO Balance</div>
           <div className="stat-value">{ptoBalance}<span className="stat-unit">days</span></div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{Math.round(ptoBalance * 8 * 10) / 10} hours</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Pending Leave</div>
