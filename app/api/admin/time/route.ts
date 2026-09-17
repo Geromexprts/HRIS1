@@ -90,3 +90,43 @@ export async function PUT(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(data)
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { entryId } = await req.json()
+  if (!entryId) return NextResponse.json({ error: 'entryId is required.' }, { status: 400 })
+
+  const { data: existing, error: fetchError } = await supabaseAdmin
+    .from('time_entries')
+    .select('*')
+    .eq('id', entryId)
+    .single()
+
+  if (fetchError || !existing) return NextResponse.json({ error: 'Entry not found.' }, { status: 404 })
+
+  const { error } = await supabaseAdmin
+    .from('time_entries')
+    .delete()
+    .eq('id', entryId)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await supabaseAdmin.from('audit_log').insert({
+    employee_id: existing.employee_id,
+    action: 'time_entry_deleted',
+    details: {
+      entry_id: entryId,
+      date: existing.date,
+      clock_in: existing.clock_in,
+      clock_out: existing.clock_out,
+      total_hours: existing.total_hours,
+      deleted_by: session.user.email,
+    },
+    performed_at: new Date().toISOString(),
+  })
+
+  return NextResponse.json({ ok: true })
+}

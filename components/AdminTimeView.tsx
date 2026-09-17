@@ -176,14 +176,16 @@ function AddEntryModal({ employees, onClose, onSave }: {
 
 // ── EditModal ─────────────────────────────────────────────────────────────────
 
-function EditModal({ entry, employeeName, onClose, onSave }: {
-  entry: TimeEntry; employeeName: string; onClose: () => void; onSave: (u: TimeEntry) => void
+function EditModal({ entry, employeeName, onClose, onSave, onDelete }: {
+  entry: TimeEntry; employeeName: string; onClose: () => void; onSave: (u: TimeEntry) => void; onDelete: (id: string) => void
 }) {
   const [clockIn, setClockIn] = useState(utcToLAInput(entry.clock_in))
   const [clockOut, setClockOut] = useState(utcToLAInput(entry.clock_out))
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   async function handleSave() {
     if (!clockIn) { setError('Clock-in time is required.'); return }
@@ -195,6 +197,22 @@ function EditModal({ entry, employeeName, onClose, onSave }: {
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
     onSave(data)
+  }
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await fetch('/api/admin/time', {
+      method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entryId: entry.id }),
+    })
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error ?? 'Delete failed.')
+      setDeleting(false)
+      setConfirmDelete(false)
+      return
+    }
+    onDelete(entry.id)
   }
 
   return (
@@ -212,8 +230,35 @@ function EditModal({ entry, employeeName, onClose, onSave }: {
           {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>{saving ? 'Saving…' : 'Save Changes'}</button>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+          <button onClick={handleSave} disabled={saving || deleting} className="btn btn-primary" style={{ flex: 1 }}>{saving ? 'Saving…' : 'Save Changes'}</button>
+          <button onClick={onClose} disabled={saving || deleting} className="btn btn-ghost">Cancel</button>
+        </div>
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              style={{ fontSize: 12, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500, padding: 0 }}
+            >
+              Delete this entry
+            </button>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 12.5, color: 'var(--red)', fontWeight: 500 }}>Delete permanently?</span>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ fontSize: 12, fontWeight: 600, color: '#fff', background: 'var(--red)', border: 'none', borderRadius: 5, padding: '4px 12px', cursor: deleting ? 'not-allowed' : 'pointer' }}
+              >
+                {deleting ? 'Deleting…' : 'Yes, delete'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -765,6 +810,10 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
           onClose={() => setEditingEntry(null)}
           onSave={updated => {
             setAllEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
+            setEditingEntry(null)
+          }}
+          onDelete={deletedId => {
+            setAllEntries(prev => prev.filter(e => e.id !== deletedId))
             setEditingEntry(null)
           }}
         />
