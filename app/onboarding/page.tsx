@@ -56,20 +56,13 @@ export default function OnboardingPage() {
     }}>
       {/* Header */}
       <div style={{ width: '100%', maxWidth: 560, marginBottom: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: '#3D6FE8',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="18" height="18" viewBox="0 0 20 20" fill="white">
-              <path fillRule="evenodd" d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-7 9a7 7 0 1 1 14 0H3z" clipRule="evenodd" />
-            </svg>
-          </div>
-          <div>
-            <div style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>BayLegal</div>
-            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 1 }}>xprts.com · HRIS Portal</div>
-          </div>
+        <div style={{ borderRadius: 12, overflow: 'hidden', marginBottom: 20 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/baylegal form logo.png"
+            alt="Bay Legal — A Professional Corporation"
+            style={{ width: '100%', display: 'block' }}
+          />
         </div>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Contractor Onboarding</h1>
         <p style={{ fontSize: 13, color: '#5A6478', lineHeight: 1.6 }}>
