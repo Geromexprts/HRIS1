@@ -92,6 +92,12 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
           monthly_salary: emp.monthly_salary ?? null,
           shift_schedule: emp.shift_schedule ?? null,
           payslip_delivery: emp.payslip_delivery ?? null,
+          date_of_birth: emp.date_of_birth ?? null,
+          home_address: emp.home_address ?? null,
+          personal_email: emp.personal_email ?? null,
+          mobile_number: emp.mobile_number ?? null,
+          emergency_contact_name: emp.emergency_contact_name ?? null,
+          emergency_contact_phone: emp.emergency_contact_phone ?? null,
         }}
         managerName={managerName}
         approverName={approverName}

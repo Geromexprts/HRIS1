@@ -13,6 +13,12 @@ type Emp = {
   employment_start_date: string | null; office_location: string | null
   monthly_salary: number | null; shift_schedule: string | null
   payslip_delivery: string | null
+  date_of_birth: string | null
+  home_address: string | null
+  personal_email: string | null
+  mobile_number: string | null
+  emergency_contact_name: string | null
+  emergency_contact_phone: string | null
 }
 type TimeEntry = {
   id: string; date: string; clock_in: string | null; clock_out: string | null
@@ -181,6 +187,43 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
               </div>
             </div>
           </div>
+          {(emp.date_of_birth || emp.home_address || emp.personal_email || emp.mobile_number || emp.emergency_contact_name || emp.emergency_contact_phone) && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div className="card">
+                <div className="card-title" style={{ marginBottom: 14 }}>Personal Details</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+                  {[
+                    { label: 'Date of Birth', value: emp.date_of_birth ? fmtDate(emp.date_of_birth) : null },
+                    { label: 'Personal Email', value: emp.personal_email },
+                    { label: 'Mobile Number', value: emp.mobile_number },
+                    { label: 'Home Address', value: emp.home_address },
+                  ].filter(r => r.value).map(row => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{row.label}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', textAlign: 'right', wordBreak: 'break-word' }}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="card">
+                <div className="card-title" style={{ marginBottom: 14 }}>Emergency Contact</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+                  {[
+                    { label: 'Name & Relationship', value: emp.emergency_contact_name },
+                    { label: 'Mobile Number', value: emp.emergency_contact_phone },
+                  ].filter(r => r.value).map(row => (
+                    <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{row.label}</span>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{row.value}</span>
+                    </div>
+                  ))}
+                  {!emp.emergency_contact_name && !emp.emergency_contact_phone && (
+                    <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Not provided</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           <div className="card">
             <div className="card-title" style={{ marginBottom: 14 }}>Payroll — Current Period</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, fontSize: 13 }}>
