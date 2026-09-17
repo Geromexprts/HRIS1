@@ -5,6 +5,12 @@ export type AccrualEvent = {
   note: string
 }
 
+// Policy: proration based on which month the 6-month anniversary falls in (first year only)
+const PRORATION_TABLE: Record<number, number> = {
+  1: 9, 2: 8, 3: 8, 4: 7, 5: 6, 6: 5,
+  7: 4, 8: 3, 9: 3, 10: 2, 11: 1, 12: 0,
+}
+
 function addMonths(dateStr: string, months: number): string {
   const d = new Date(dateStr + 'T12:00:00')
   d.setMonth(d.getMonth() + months)
@@ -35,20 +41,21 @@ export function computeAccrualUpdates(params: {
   let newBalance = currentBalance
   const newEvents: AccrualEvent[] = []
 
-  // Step 1: One-time 8-day grant on 6-month anniversary
+  // One-time prorated grant on 6-month anniversary (table-based, not flat)
   const alreadyGranted = accrualHistory.some(e => e.type === 'first_year_grant')
   if (!alreadyGranted) {
-    newBalance += 8
+    const sixMonthMonth = parseInt(sixMonthDate.split('-')[1])
+    const proratedDays = PRORATION_TABLE[sixMonthMonth] ?? 0
+    newBalance += proratedDays
     newEvents.push({
       type: 'first_year_grant',
-      days: 8,
+      days: proratedDays,
       date: sixMonthDate,
-      note: '8-day PTO grant at 6-month anniversary',
+      note: `${proratedDays}-day prorated PTO grant at 6-month anniversary (eligible ${sixMonthDate.slice(0, 7)})`,
     })
   }
 
-  // Step 2: January 1 annual reset to 8 days (every year after the grant was given)
-  // Policy: no carryover — unused days expire Dec 31, balance resets to 8 on Jan 1
+  // Jan 1 annual reset to 10 days — unused balance forfeited, no carryover
   const grantGiven = alreadyGranted || newEvents.some(e => e.type === 'first_year_grant')
   if (grantGiven) {
     const eligibilityYear = parseInt(sixMonthDate.split('-')[0])
@@ -62,12 +69,12 @@ export function computeAccrualUpdates(params: {
         e => e.type === 'annual_reset' && e.date.startsWith(`${year}-`)
       )
       if (!alreadyReset) {
-        newBalance = 8
+        newBalance = 10
         newEvents.push({
           type: 'annual_reset',
-          days: 8,
+          days: 10,
           date: jan1,
-          note: `Annual PTO reset to 8 days (Jan 1, ${year})`,
+          note: `Annual PTO reset to 10 days (Jan 1, ${year}) — unused balance forfeited`,
         })
       }
     }
