@@ -16,12 +16,12 @@ function tenure(startDate: string): string {
   return rem > 0 ? `${years}y ${rem}m` : `${years} year${years !== 1 ? 's' : ''}`
 }
 
-export default async function EmployeeProfilePage({ params }: { params: { id: string } }) {
+export default async function EmployeeProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
   if (session.user.role !== 'admin') redirect('/dashboard')
 
-  const { id } = params
+  const { id } = await params
   const today = laToday()
   const { periodStart, periodEnd } = laPeriodBounds()
 
