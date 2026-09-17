@@ -36,7 +36,8 @@ function breakMins(breaks: { start: string; end: string | null }[]): number {
 function entryHours(e: TimeEntry, nowMs: number): number | null {
   if (e.total_hours != null) return e.total_hours
   if (e.clock_in && !e.clock_out) {
-    return Math.round((nowMs - new Date(e.clock_in).getTime()) / 360000) / 10
+    const rawHrs = (nowMs - new Date(e.clock_in).getTime()) / 3600000
+    return Math.max(0, Math.round((rawHrs - 1) * 10) / 10)
   }
   return null
 }

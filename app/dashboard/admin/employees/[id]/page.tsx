@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, laPeriodBounds } from '@/lib/dates'
 import Link from 'next/link'
 import { EmployeeProfileView } from '@/components/EmployeeProfileView'
+import { CopyOnboardingLink } from '@/components/CopyOnboardingLink'
 
 function tenure(startDate: string): string {
   const ms = Date.now() - new Date(startDate + 'T12:00:00').getTime()
@@ -69,7 +70,8 @@ export default async function EmployeeProfilePage({ params }: { params: { id: st
               {emp.employment_start_date && <span style={{ marginLeft: 10, color: 'var(--text-muted)' }}>· {tenure(emp.employment_start_date)} tenure</span>}
             </p>
           </div>
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <CopyOnboardingLink />
             <span className={`badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}`}>{emp.status}</span>
             <span className="badge badge-blue" style={{ textTransform: 'capitalize' }}>{emp.role}</span>
           </div>

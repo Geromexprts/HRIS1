@@ -337,7 +337,7 @@ async function AdminDashboard() {
                 const sinceMs = Date.now() - new Date(e.clock_in).getTime()
                 const hrs = Math.floor(sinceMs / 3600000)
                 const mins = Math.floor((sinceMs % 3600000) / 60000)
-                const isOT = hrs >= 8
+                const isOT = hrs >= 9
                 return (
                   <div key={e.employee_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -396,7 +396,7 @@ async function AdminDashboard() {
       {/* ── Overtime ── */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 10 }}>Over 8h Yesterday <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({yesterday})</span></div>
+          <div className="card-title" style={{ marginBottom: 10 }}>Over 9h Yesterday <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>({yesterday})</span></div>
           {(overtimeYesterday ?? []).length === 0 ? (
             <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No overtime yesterday.</p>
           ) : (
