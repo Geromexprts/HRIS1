@@ -23,7 +23,6 @@ export default async function TimePage() {
     .select('*')
     .eq('employee_id', session.user.id)
     .order('date', { ascending: false })
-    .limit(14)
 
   return (
     <div>

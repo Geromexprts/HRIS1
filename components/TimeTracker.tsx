@@ -60,57 +60,18 @@ function getStatus(entry: TimeEntry | null) {
   return 'clocked_in'
 }
 
-function EditStartTimeModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () => void; onSave: (u: TimeEntry) => void }) {
-  const [clockIn, setClockIn] = useState(utcToLAInput(entry.clock_in))
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  async function handleSave() {
-    if (!clockIn) { setError('Start time is required.'); return }
-    setSaving(true)
-    const res = await fetch('/api/time', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: entry.id, clock_in: laInputToUTC(clockIn), clock_out: null }),
-    })
-    const data = await res.json()
-    if (!res.ok) { setError(data.error ?? 'Failed to save.'); setSaving(false); return }
-    onSave(data)
-  }
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: 340 }}>
-        <div className="modal-title">Edit Start Time</div>
-        <div className="modal-sub">Adjust your clock-in time for today · <span style={{ color: 'var(--accent)' }}>PST</span></div>
-        <div style={{ marginBottom: 16 }}>
-          <label className="field-label">Clock In</label>
-          <input type="datetime-local" value={clockIn} onChange={e => setClockIn(e.target.value)} className="field-input" autoFocus />
-        </div>
-        {error && <p style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 12 }}>{error}</p>}
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
-            {saving ? 'Saving…' : 'Save'}
-          </button>
-          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () => void; onSave: (u: TimeEntry) => void }) {
-  const [clockIn, setClockIn] = useState(utcToLAInput(entry.clock_in))
   const [clockOut, setClockOut] = useState(utcToLAInput(entry.clock_out))
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function handleSave() {
-    if (!clockIn) { setError('Clock-in time is required.'); return }
+    if (!clockOut) { setError('Clock-out time is required.'); return }
     setSaving(true)
     const res = await fetch('/api/time', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: entry.id, clock_in: laInputToUTC(clockIn), clock_out: clockOut ? laInputToUTC(clockOut) : null, edit_note: note }),
+      body: JSON.stringify({ entryId: entry.id, clock_in: entry.clock_in, clock_out: laInputToUTC(clockOut), edit_note: note }),
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed to save.'); setSaving(false); return }
@@ -120,19 +81,19 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <div className="modal-title">Edit Time Entry</div>
+        <div className="modal-title">Edit Clock-Out Time</div>
         <div className="modal-sub">
           {toDate(entry.date)} · This edit will be flagged for admin review.
           <span style={{ color: 'var(--accent)', marginLeft: 6 }}>All times in PST</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label className="field-label">Clock In</label>
-            <input type="datetime-local" value={clockIn} onChange={e => setClockIn(e.target.value)} className="field-input" />
+            <label className="field-label">Clock In <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(not editable)</span></label>
+            <input type="datetime-local" value={utcToLAInput(entry.clock_in)} disabled className="field-input" style={{ opacity: 0.5, cursor: 'not-allowed' }} />
           </div>
           <div>
             <label className="field-label">Clock Out</label>
-            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" />
+            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" autoFocus />
           </div>
           <div>
             <label className="field-label">Reason for edit</label>
@@ -159,7 +120,8 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('00:00:00')
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
-  const [editingStart, setEditingStart] = useState(false)
+  const [filterFrom, setFilterFrom] = useState('')
+  const [filterTo, setFilterTo] = useState('')
 
   const status = getStatus(entry)
 
@@ -196,10 +158,15 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
     setEditingEntry(null)
   }
 
+  const filteredEntries = entries.filter(e => {
+    if (filterFrom && e.date < filterFrom) return false
+    if (filterTo && e.date > filterTo) return false
+    return true
+  })
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} />}
-      {editingStart && entry && <EditStartTimeModal entry={entry} onClose={() => setEditingStart(false)} onSave={u => { setEntry(u); setEditingStart(false) }} />}
 
       {/* Clock card */}
       <div className="card">
@@ -220,17 +187,8 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
           </div>
           <div style={{ textAlign: 'right', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 2 }}>
             {entry?.clock_in && (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+              <div>
                 <span>In: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_in)}</strong></span>
-                {status === 'clocked_in' && (
-                  <button
-                    onClick={() => setEditingStart(true)}
-                    title="Edit start time"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', padding: '0 2px', lineHeight: 1, fontSize: 11, fontWeight: 600 }}
-                  >
-                    Edit
-                  </button>
-                )}
               </div>
             )}
             {entry?.clock_out && <div>Out: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_out)}</strong></div>}
@@ -263,11 +221,35 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
         )}
       </div>
 
-      {/* Recent entries */}
+      {/* All time entries */}
       {entries.length > 0 && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
-            <div className="card-title" style={{ marginBottom: 0 }}>Recent Days</div>
+          <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>All Time Entries <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>({filteredEntries.length} record{filteredEntries.length !== 1 ? 's' : ''})</span></div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+              <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>From</span>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={e => setFilterFrom(e.target.value)}
+                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }}
+              />
+              <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>To</span>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={e => setFilterTo(e.target.value)}
+                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }}
+              />
+              {(filterFrom || filterTo) && (
+                <button
+                  onClick={() => { setFilterFrom(''); setFilterTo('') }}
+                  style={{ fontSize: 11.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </div>
           <div className="table-wrap">
             <table className="data-table">
@@ -281,7 +263,9 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
                 </tr>
               </thead>
               <tbody>
-                {entries.map(e => (
+                {filteredEntries.length === 0 ? (
+                  <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>No entries in selected range.</td></tr>
+                ) : filteredEntries.map(e => (
                   <tr key={e.id}>
                     <td>
                       <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{toDate(e.date)}</span>

@@ -33,7 +33,7 @@ function isLate(clockIn: string): boolean {
     timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false,
   })
   const [h, min] = laTime.split(':').map(Number)
-  return h > 9 || (h === 9 && min > 30)
+  return h > 8 || (h === 8 && min > 0)
 }
 
 function fmtLaTime(iso: string): string {
@@ -286,14 +286,11 @@ async function AdminDashboard() {
       </div>
 
       {/* ── Data Quality Alerts ── */}
-      {(noSalary.length > 0 || noApprover.length > 0 || noManager.length > 0 || lowPtoEmployees.length > 0 || stalePending.length > 0) && (
+      {(lowPtoEmployees.length > 0 || stalePending.length > 0) && (
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Setup Alerts</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
             {([
-              { label: 'No Salary Set', items: noSalary.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--red)' },
-              { label: 'No Approver', items: noApprover.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
-              { label: 'No Manager', items: noManager.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
               { label: 'Low PTO (< 1 day)', items: lowPtoEmployees.map((e: { id: string; name: string }) => ({ id: e.id, name: e.name, href: `/dashboard/admin/employees/${e.id}` })), color: 'var(--amber)' },
               { label: 'Pending > 7 days', items: stalePending.map((r: { id: string; employees: { name: string } | { name: string }[] }) => { const emp = Array.isArray(r.employees) ? r.employees[0] : r.employees; return { id: r.id, name: emp?.name ?? '—', href: '/dashboard/approvals' } }), color: 'var(--red)' },
             ] as { label: string; items: { id: string; name: string; href: string }[]; color: string }[]).map(alert => (
