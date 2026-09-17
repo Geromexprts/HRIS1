@@ -118,6 +118,7 @@ export default async function ProfilePage() {
       {/* Personal & Contact Info (editable) */}
       <div style={{ marginBottom: 12 }}>
         <PersonalInfoForm initial={{
+          name: employee?.name ?? '',
           date_of_birth: employee?.date_of_birth ?? null,
           home_address: employee?.home_address ?? null,
           personal_email: employee?.personal_email ?? null,

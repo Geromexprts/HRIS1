@@ -8,9 +8,13 @@ export async function PUT(req: NextRequest) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date_of_birth, home_address, personal_email, mobile_number, emergency_contact_name, emergency_contact_phone } = body
+  const { name, date_of_birth, home_address, personal_email, mobile_number, emergency_contact_name, emergency_contact_phone } = body
+
+  const trimmedName = name?.trim()
+  if (!trimmedName) return NextResponse.json({ error: 'Name is required.' }, { status: 400 })
 
   const update: Record<string, string | null> = {
+    name: trimmedName,
     date_of_birth: date_of_birth?.trim() || null,
     home_address: home_address?.trim() || null,
     personal_email: personal_email?.trim() || null,

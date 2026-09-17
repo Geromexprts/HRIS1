@@ -3,6 +3,7 @@
 import { useState } from 'react'
 
 type PersonalInfo = {
+  name: string
   date_of_birth: string | null
   home_address: string | null
   personal_email: string | null
@@ -46,7 +47,7 @@ export function PersonalInfoForm({ initial }: { initial: PersonalInfo }) {
     setError('')
   }
 
-  const hasAnyData = Object.values(form).some(v => v)
+  const hasAnyData = !!(form.name || Object.values(form).some(v => v))
 
   return (
     <div className="card">
@@ -75,6 +76,7 @@ export function PersonalInfoForm({ initial }: { initial: PersonalInfo }) {
           ) : (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <ViewRow label="Full Name" value={form.name} />
                 <ViewRow label="Date of Birth" value={form.date_of_birth} />
                 <ViewRow label="Personal Email" value={form.personal_email} />
                 <ViewRow label="Mobile Number" value={form.mobile_number} />
@@ -93,6 +95,15 @@ export function PersonalInfoForm({ initial }: { initial: PersonalInfo }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            <Field label="Full Name">
+              <input
+                type="text"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+                placeholder="First Last"
+                className="field-input"
+              />
+            </Field>
             <Field label="Date of Birth">
               <input
                 type="date"
