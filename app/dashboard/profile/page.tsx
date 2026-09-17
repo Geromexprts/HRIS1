@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, laPeriodBounds } from '@/lib/dates'
 import Link from 'next/link'
+import { PersonalInfoForm } from '@/components/PersonalInfoForm'
 
 export default async function ProfilePage() {
   const session = await getServerSession(authOptions)
@@ -112,6 +113,18 @@ export default async function ProfilePage() {
             <ProfileRow label="Approver" value={approverName} />
           </div>
         </div>
+      </div>
+
+      {/* Personal & Contact Info (editable) */}
+      <div style={{ marginBottom: 12 }}>
+        <PersonalInfoForm initial={{
+          date_of_birth: employee?.date_of_birth ?? null,
+          home_address: employee?.home_address ?? null,
+          personal_email: employee?.personal_email ?? null,
+          mobile_number: employee?.mobile_number ?? null,
+          emergency_contact_name: employee?.emergency_contact_name ?? null,
+          emergency_contact_phone: employee?.emergency_contact_phone ?? null,
+        }} />
       </div>
 
       {/* Summary stats */}
