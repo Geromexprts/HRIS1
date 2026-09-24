@@ -10,6 +10,7 @@ const icons = {
   person: <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-7 9a7 7 0 1 1 14 0H3z" clipRule="evenodd"/></svg>,
   clock: <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm1-12a1 1 0 1 0-2 0v4a1 1 0 0 0 .553.894l2.5 1.25a1 1 0 1 0 .894-1.788L11 9.382V6z" clipRule="evenodd"/></svg>,
   calendar: <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 0 0-1 1v1H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-1V3a1 1 0 1 0-2 0v1H7V3a1 1 0 0 0-1-1zm0 5a1 1 0 0 0 0 2h8a1 1 0 1 0 0-2H6z" clipRule="evenodd"/></svg>,
+  money: <svg viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 0 0-2 2v1h16V6a2 2 0 0 0-2-2H4z"/><path fillRule="evenodd" d="M18 9H2v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM4 13a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1zm5-1a1 1 0 1 0 0 2h1a1 1 0 1 0 0-2H9z" clipRule="evenodd"/></svg>,
   check: <svg viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 0 1 0 1.414l-8 8a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 1.414-1.414L8 12.586l7.293-7.293a1 1 0 0 1 1.414 0z" clipRule="evenodd"/></svg>,
   users: <svg viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0zm8 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM0 16a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v1H0v-1zm14-2a4 4 0 0 1 4 4v1h-4v-5z"/></svg>,
   chart: <svg viewBox="0 0 20 20" fill="currentColor"><path d="M2 11a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-5zm6-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V7zm5-3a1 1 0 0 1 2 0v12a1 1 0 0 1-2 0V4z"/></svg>,
@@ -61,6 +62,7 @@ export function Sidebar({ role, name, email, isOpen, onClose }: {
         <NavLink href="/dashboard" label="Dashboard" icon="home" exact onClick={onClose} />
         <NavLink href="/dashboard/time" label="My Time" icon="clock" onClick={onClose} />
         <NavLink href="/dashboard/leave" label="Leave" icon="calendar" onClick={onClose} />
+        <NavLink href="/dashboard/pay" label="Pay View" icon="money" onClick={onClose} />
         <NavLink href="/dashboard/profile" label="My Profile" icon="person" onClick={onClose} />
 
         {(role === 'approver' || role === 'admin') && (
@@ -78,6 +80,7 @@ export function Sidebar({ role, name, email, isOpen, onClose }: {
             <NavLink href="/dashboard/admin/employees" label="Employees" icon="users" onClick={onClose} />
             <NavLink href="/dashboard/admin/pto" label="PTO" icon="calendar" onClick={onClose} />
             <NavLink href="/dashboard/admin/payroll" label="Payroll" icon="chart" onClick={onClose} />
+            <NavLink href="/dashboard/admin/payslips" label="Payslips" icon="money" onClick={onClose} />
             <NavLink href="/dashboard/admin/reports" label="Reports" icon="chart" onClick={onClose} />
           </>
         )}
