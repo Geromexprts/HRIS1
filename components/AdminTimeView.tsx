@@ -72,6 +72,21 @@ function bizDays(days: string[]): number {
   return days.filter(d => { const wd = new Date(d + 'T12:00:00').getDay(); return wd !== 0 && wd !== 6 }).length
 }
 
+function downloadCSV(filename: string, rows: (string | number)[][]) {
+  const escape = (v: string | number) => {
+    const s = String(v ?? '')
+    return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  // BOM so Excel opens UTF-8 correctly
+  const csv = '﻿' + rows.map(r => r.map(escape).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename
+  document.body.appendChild(a); a.click()
+  document.body.removeChild(a); URL.revokeObjectURL(url)
+}
+
 function onBreak(e: TimeEntry): boolean {
   const bs = e.breaks ?? []
   return bs.length > 0 && !bs[bs.length - 1].end
@@ -799,7 +814,89 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
     )
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Export ───────────────────────────────────────────────────────────────
+
+  function handleExport() {
+    const laHHMM = (iso: string | null) =>
+      iso ? new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: LA_TZ }) : ''
+
+    const fmtDecimal = (h: number | null) => h != null ? Math.round(h * 100) / 100 : ''
+
+    const nowMsSnap = Date.now()
+
+    if (tab === 'today') {
+      const rows: (string | number)[][] = [
+        ['Date', 'Employee', 'Status', 'Clock In (PST)', 'Clock Out (PST)', 'Break (min)', 'Hours', 'OT Hours', 'Late'],
+      ]
+      for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
+        const entry = byEmpDate[emp.id]?.[today] ?? null
+        const h = entry ? entryHours(entry, nowMsSnap) : null
+        const ot = h != null ? otH(h) : 0
+        const bm = entry ? breakMins(entry.breaks ?? []) : 0
+        const late = entry?.clock_in ? isLate(entry.clock_in) : false
+        let status = 'Not Started'
+        if (entry && onBreak(entry)) status = 'On Break'
+        else if (entry && !entry.clock_out) status = 'Clocked In'
+        else if (entry?.clock_out) status = 'Clocked Out'
+        rows.push([today, emp.name, status, laHHMM(entry?.clock_in ?? null), laHHMM(entry?.clock_out ?? null), bm || '', fmtDecimal(h), ot > 0 ? fmtDecimal(ot) : '', late ? 'Yes' : ''])
+      }
+      downloadCSV(`Team-Time-Today-${today}.csv`, rows)
+    }
+
+    else if (tab === 'yesterday') {
+      const rows: (string | number)[][] = [
+        ['Date', 'Employee', 'Status', 'Clock In (PST)', 'Clock Out (PST)', 'Break (min)', 'Hours', 'OT Hours'],
+      ]
+      for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
+        const entry = byEmpDate[emp.id]?.[yesterday] ?? null
+        const h = entry ? entryHours(entry, nowMsSnap) : null
+        const ot = h != null ? otH(h) : 0
+        const bm = entry ? breakMins(entry.breaks ?? []) : 0
+        let status = 'No Entry'
+        if (entry?.clock_out) status = 'Completed'
+        else if (entry?.clock_in) status = 'Missing Punch'
+        rows.push([yesterday, emp.name, status, laHHMM(entry?.clock_in ?? null), laHHMM(entry?.clock_out ?? null), bm || '', fmtDecimal(h), ot > 0 ? fmtDecimal(ot) : ''])
+      }
+      downloadCSV(`Team-Time-Yesterday-${yesterday}.csv`, rows)
+    }
+
+    else if (tab === 'weekly') {
+      const headers: (string | number)[] = ['Employee', ...weekDays.map(d => `${dayLabel(d)} ${fmtDate(d)}`), 'Total Hours', 'Daily OT Hours']
+      const rows: (string | number)[][] = [headers]
+      for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
+        const dayHours = weekDays.map(d => {
+          const e = byEmpDate[emp.id]?.[d]
+          return e ? entryHours(e, nowMsSnap) : null
+        })
+        const total = dayHours.reduce((s: number, h) => s + (h ?? 0), 0)
+        const totalOT = dayHours.reduce((s: number, h) => s + (h != null ? otH(h) : 0), 0)
+        rows.push([emp.name, ...dayHours.map(fmtDecimal), fmtDecimal(Math.round(total * 100) / 100), totalOT > 0 ? fmtDecimal(Math.round(totalOT * 100) / 100) : ''])
+      }
+      const label = `${weekDays[0]}_to_${weekDays[weekDays.length - 1]}`
+      downloadCSV(`Team-Time-Weekly-${label}.csv`, rows)
+    }
+
+    else if (tab === 'monthly') {
+      const rows: (string | number)[][] = [
+        ['Employee', 'Days Present', 'Business Days', 'Attendance %', 'Total Hours', 'Regular Hours', 'OT Hours', 'Period'],
+      ]
+      for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
+        const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
+        const total = empEntries.reduce((s: number, e) => s + (e ? (entryHours(e, nowMsSnap) ?? 0) : 0), 0)
+        const regularHrs = empEntries.reduce((s: number, e) => {
+          const h = e ? entryHours(e, nowMsSnap) : null
+          return s + (h != null ? Math.min(8, h) : 0)
+        }, 0)
+        const totalOT = Math.max(0, total - regularHrs)
+        const daysPresent = empEntries.filter(e => e?.clock_in).length
+        const attendance = periodBizDays > 0 ? Math.round((daysPresent / periodBizDays) * 100) : 0
+        rows.push([emp.name, daysPresent, periodBizDays, `${attendance}%`, fmtDecimal(Math.round(total * 100) / 100), fmtDecimal(Math.round(regularHrs * 100) / 100), totalOT > 0 ? fmtDecimal(Math.round(totalOT * 100) / 100) : 0, `${periodStart} to ${periodEnd}`])
+      }
+      downloadCSV(`Team-Time-Period-${periodStart}_to_${periodEnd}.csv`, rows)
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -910,6 +1007,11 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
         <button onClick={handleRefresh} disabled={refreshing} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }}>
           {refreshing ? 'Refreshing…' : '↻ Refresh'}
         </button>
+        {tab !== 'edits' && (
+          <button onClick={handleExport} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px' }}>
+            ↓ Export Excel
+          </button>
+        )}
       </div>
 
       {tab === 'today' && renderToday()}
