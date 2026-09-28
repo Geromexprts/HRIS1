@@ -113,12 +113,12 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
 }
 
 function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) {
-  const defaultOt = Math.max(0, Number(entry.total_hours ?? 0) - 8)
-  const [otHours, setOtHours] = useState(defaultOt > 0 ? defaultOt.toFixed(2) : '')
+  const [step, setStep] = useState<'ask' | 'form' | 'done'>('ask')
+  const [otHours, setOtHours] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [done, setDone] = useState(false)
+  const [submittedHours, setSubmittedHours] = useState('')
 
   async function submit() {
     const hrs = parseFloat(otHours)
@@ -131,19 +131,39 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed to submit.'); setSaving(false); return }
-    setDone(true)
+    setSubmittedHours(otHours)
+    setStep('done')
   }
 
-  if (done) {
+  if (step === 'done') {
     return (
       <div className="modal-overlay">
         <div className="modal" style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
           <div className="modal-title">OT Request Submitted</div>
           <div className="modal-sub" style={{ marginBottom: 20 }}>
-            Your overtime request for {otHours}h has been sent to your manager for approval.
+            Your overtime request for {submittedHours}h has been sent to your manager for approval.
           </div>
           <button onClick={onClose} className="btn btn-primary" style={{ width: '100%' }}>Done</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (step === 'ask') {
+    return (
+      <div className="modal-overlay">
+        <div className="modal">
+          <div className="modal-title">Did you work overtime today?</div>
+          <div className="modal-sub" style={{ marginBottom: 20 }}>
+            {toDate(entry.date)} · {entry.total_hours}h logged
+          </div>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={() => setStep('form')} className="btn btn-primary" style={{ flex: 1 }}>
+              Yes, add OT request
+            </button>
+            <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>No, skip</button>
+          </div>
         </div>
       </div>
     )
@@ -153,20 +173,9 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-title">Overtime Request</div>
-        <div className="modal-sub">
-          {toDate(entry.date)} · Total hours today: <strong>{entry.total_hours}h</strong>
-        </div>
+        <div className="modal-sub">{toDate(entry.date)} · {entry.total_hours}h logged today</div>
 
-        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
-          Did you work overtime today? Submit a request below and your manager will review it.
-          {defaultOt > 0 && (
-            <div style={{ marginTop: 4, color: 'var(--amber)', fontWeight: 500 }}>
-              {defaultOt.toFixed(2)}h of OT detected (over 8h shift).
-            </div>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
           <div>
             <label className="field-label">OT Hours</label>
             <input
@@ -199,7 +208,7 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
           <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
             {saving ? 'Submitting…' : 'Submit OT Request'}
           </button>
-          <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Skip</button>
+          <button onClick={() => setStep('ask')} className="btn btn-ghost">Back</button>
         </div>
       </div>
     </div>
