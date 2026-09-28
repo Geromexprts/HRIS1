@@ -112,6 +112,100 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
   )
 }
 
+function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) {
+  const defaultOt = Math.max(0, Number(entry.total_hours ?? 0) - 8)
+  const [otHours, setOtHours] = useState(defaultOt > 0 ? defaultOt.toFixed(2) : '')
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [done, setDone] = useState(false)
+
+  async function submit() {
+    const hrs = parseFloat(otHours)
+    if (!otHours || isNaN(hrs) || hrs <= 0) { setError('Enter a valid number of OT hours.'); return }
+    setSaving(true); setError('')
+    const res = await fetch('/api/ot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: entry.date, ot_hours: hrs, reason: reason || null, time_entry_id: entry.id }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed to submit.'); setSaving(false); return }
+    setDone(true)
+  }
+
+  if (done) {
+    return (
+      <div className="modal-overlay">
+        <div className="modal" style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
+          <div className="modal-title">OT Request Submitted</div>
+          <div className="modal-sub" style={{ marginBottom: 20 }}>
+            Your overtime request for {otHours}h has been sent to your manager for approval.
+          </div>
+          <button onClick={onClose} className="btn btn-primary" style={{ width: '100%' }}>Done</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Overtime Request</div>
+        <div className="modal-sub">
+          {toDate(entry.date)} · Total hours today: <strong>{entry.total_hours}h</strong>
+        </div>
+
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: 'var(--text-secondary)' }}>
+          Did you work overtime today? Submit a request below and your manager will review it.
+          {defaultOt > 0 && (
+            <div style={{ marginTop: 4, color: 'var(--amber)', fontWeight: 500 }}>
+              {defaultOt.toFixed(2)}h of OT detected (over 8h shift).
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label className="field-label">OT Hours</label>
+            <input
+              type="number"
+              min="0.25"
+              max="16"
+              step="0.25"
+              value={otHours}
+              onChange={e => setOtHours(e.target.value)}
+              placeholder="e.g. 1.5"
+              className="field-input"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="field-label">Reason <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+            <textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              className="field-input"
+              rows={2}
+              style={{ resize: 'vertical' }}
+              placeholder="e.g. Project deadline, client meeting ran late"
+            />
+          </div>
+          {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+            {saving ? 'Submitting…' : 'Submit OT Request'}
+          </button>
+          <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Skip</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
   employeeId: string; todayEntry: TimeEntry | null; recentEntries: TimeEntry[]
 }) {
@@ -120,6 +214,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('00:00:00')
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  const [otEntry, setOtEntry] = useState<TimeEntry | null>(null)
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
 
@@ -148,6 +243,9 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
         const idx = prev.findIndex(e => e.id === data.id)
         return idx >= 0 ? prev.map(e => e.id === data.id ? data : e) : [data, ...prev]
       })
+      if (action === 'clock_out') {
+        setOtEntry(data)
+      }
     }
     setLoading(false)
   }
@@ -167,6 +265,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} />}
+      {otEntry && <OtModal entry={otEntry} onClose={() => setOtEntry(null)} />}
 
       {/* Clock card */}
       <div className="card">
@@ -176,9 +275,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
               {toDate(new Date().toISOString().split('T')[0])} · PST
             </div>
             {status === 'clocked_in' ? (
-              <div className="clock-display">
-                {elapsed}
-              </div>
+              <div className="clock-display">{elapsed}</div>
             ) : status === 'clocked_out' ? (
               <div className="clock-display">{entry?.total_hours}<span style={{ fontSize: 20, color: 'var(--text-muted)', marginLeft: 6 }}>hrs</span></div>
             ) : (
@@ -187,9 +284,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
           </div>
           <div style={{ textAlign: 'right', fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 2 }}>
             {entry?.clock_in && (
-              <div>
-                <span>In: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_in)}</strong></span>
-              </div>
+              <div><span>In: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_in)}</strong></span></div>
             )}
             {entry?.clock_out && <div>Out: <strong style={{ color: 'var(--text-secondary)' }}>{toTime(entry.clock_out)}</strong></div>}
             {status === 'clocked_in' && <span className="badge badge-green">Active</span>}
@@ -228,24 +323,14 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
             <div className="card-title" style={{ marginBottom: 0 }}>All Time Entries <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 400 }}>({filteredEntries.length} record{filteredEntries.length !== 1 ? 's' : ''})</span></div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
               <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>From</span>
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={e => setFilterFrom(e.target.value)}
-                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }}
-              />
+              <input type="date" value={filterFrom} onChange={e => setFilterFrom(e.target.value)}
+                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }} />
               <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>To</span>
-              <input
-                type="date"
-                value={filterTo}
-                onChange={e => setFilterTo(e.target.value)}
-                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }}
-              />
+              <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)}
+                style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', fontSize: 12.5, color: 'var(--text-primary)', background: 'var(--surface)', outline: 'none' }} />
               {(filterFrom || filterTo) && (
-                <button
-                  onClick={() => { setFilterFrom(''); setFilterTo('') }}
-                  style={{ fontSize: 11.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                >
+                <button onClick={() => { setFilterFrom(''); setFilterTo('') }}
+                  style={{ fontSize: 11.5, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>
                   Clear
                 </button>
               )}

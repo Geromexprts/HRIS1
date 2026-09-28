@@ -23,10 +23,98 @@ function fmt(d: string) {
   return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+function ActionModal({ request, employeeName, onClose, onDone }: {
+  request: LeaveRequest
+  employeeName: string
+  onClose: () => void
+  onDone: (updated: LeaveRequest) => void
+}) {
+  const [action, setAction] = useState<'approve' | 'deny'>('approve')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setSaving(true); setError('')
+    const res = await fetch('/api/approvals', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: request.id, action, note }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
+    onDone(data)
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Review Leave Request</div>
+        <div className="modal-sub">
+          {employeeName} · {request.days_requested} day{request.days_requested !== 1 ? 's' : ''}
+          {request.is_half_day ? ' (Half Day)' : ''}
+          {request.leave_type && (
+            <span style={{
+              fontSize: 10, padding: '1px 7px', borderRadius: 4, fontWeight: 700,
+              background: `${LEAVE_TYPE_COLOR[request.leave_type] ?? '#6366f1'}18`,
+              color: LEAVE_TYPE_COLOR[request.leave_type] ?? 'var(--accent)',
+              textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 8,
+            }}>
+              {leaveTypeLabel(request.leave_type)}
+            </span>
+          )}
+        </div>
+
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', marginBottom: 18, fontSize: 13 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div><span style={{ color: 'var(--text-muted)' }}>Period: </span>
+              <strong>{fmt(request.start_date)}{request.start_date !== request.end_date ? ` → ${fmt(request.end_date)}` : ''}</strong>
+            </div>
+            <div><span style={{ color: 'var(--text-muted)' }}>Days: </span><strong>{request.days_requested}</strong></div>
+          </div>
+          {request.reason && (
+            <div style={{ marginTop: 8, color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Reason: </span>{request.reason}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {(['approve', 'deny'] as const).map(a => (
+            <button key={a} onClick={() => setAction(a)}
+              className={`btn ${action === a ? (a === 'approve' ? 'btn-green' : 'btn-red') : 'btn-ghost'}`}
+              style={{ flex: 1, textTransform: 'capitalize' }}>
+              {a}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Note to employee <span style={{ color: 'var(--text-muted)' }}>(optional)</span></label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} className="field-input" rows={2}
+            style={{ resize: 'vertical' }} placeholder="e.g. Approved — enjoy your time off" />
+        </div>
+
+        {error && <p style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 12 }}>{error}</p>}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={submit} disabled={saving}
+            className={`btn ${action === 'approve' ? 'btn-green' : 'btn-red'}`} style={{ flex: 1 }}>
+            {saving ? 'Saving…' : action === 'approve' ? 'Approve Request' : 'Deny Request'}
+          </button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AdminLeaveView({ employees, initialRequests }: {
   employees: Employee[]
   initialRequests: LeaveRequest[]
 }) {
+  const [requests, setRequests] = useState(initialRequests)
+  const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
   const [empFilter, setEmpFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('all')
@@ -39,11 +127,11 @@ export function AdminLeaveView({ employees, initialRequests }: {
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
   const emailMap = Object.fromEntries(employees.map(e => [e.work_email, e]))
 
-  const leaveTypes = [...new Set(initialRequests.map(r => r.leave_type).filter(Boolean) as string[])]
-  const approverEmails = [...new Set(initialRequests.filter(r => r.reviewed_by).map(r => r.reviewed_by!))]
+  const leaveTypes = [...new Set(requests.map(r => r.leave_type).filter(Boolean) as string[])]
+  const approverEmails = [...new Set(requests.filter(r => r.reviewed_by).map(r => r.reviewed_by!))]
 
   const filtered = useMemo(() => {
-    let base = initialRequests
+    let base = requests
 
     if (empFilter !== 'all') base = base.filter(r => r.employee_id === empFilter)
     if (statusFilter !== 'all') base = base.filter(r => r.status === statusFilter)
@@ -74,18 +162,32 @@ export function AdminLeaveView({ employees, initialRequests }: {
     }
 
     return [...base].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-  }, [initialRequests, empFilter, statusFilter, leaveTypeFilter, approverFilter, search, dateRange, customFrom, customTo, empMap])
+  }, [requests, empFilter, statusFilter, leaveTypeFilter, approverFilter, search, dateRange, customFrom, customTo, empMap])
 
   const counts = {
-    total: initialRequests.length,
-    pending: initialRequests.filter(r => r.status === 'pending').length,
-    approved: initialRequests.filter(r => r.status === 'approved').length,
-    denied: initialRequests.filter(r => r.status === 'denied').length,
-    totalDays: initialRequests.filter(r => r.status === 'approved').reduce((s, r) => s + r.days_requested, 0),
+    total: requests.length,
+    pending: requests.filter(r => r.status === 'pending').length,
+    approved: requests.filter(r => r.status === 'approved').length,
+    denied: requests.filter(r => r.status === 'denied').length,
+    totalDays: requests.filter(r => r.status === 'approved').reduce((s, r) => s + r.days_requested, 0),
+  }
+
+  function handleDone(updated: LeaveRequest) {
+    setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+    setReviewing(null)
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      {reviewing && (
+        <ActionModal
+          request={reviewing}
+          employeeName={empMap[reviewing.employee_id]?.name ?? 'Unknown'}
+          onClose={() => setReviewing(null)}
+          onDone={handleDone}
+        />
+      )}
+
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         {[
@@ -104,7 +206,6 @@ export function AdminLeaveView({ employees, initialRequests }: {
 
       {/* Filters */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Row 1: status + search */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <div className="tabs" style={{ marginBottom: 0 }}>
             {(['all', 'pending', 'approved', 'denied'] as const).map(s => {
@@ -117,23 +218,14 @@ export function AdminLeaveView({ employees, initialRequests }: {
               )
             })}
           </div>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search employee…"
-            className="field-input"
-            style={{ maxWidth: 200, marginBottom: 0, fontSize: 12.5 }}
-          />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employee…"
+            className="field-input" style={{ maxWidth: 200, marginBottom: 0, fontSize: 12.5 }} />
         </div>
-        {/* Row 2: date range */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Period:</span>
           {([
-            { v: 'all', label: 'All Time' },
-            { v: 'month', label: 'This Month' },
-            { v: 'quarter', label: 'Last 3 Months' },
-            { v: 'year', label: 'This Year' },
-            { v: 'custom', label: 'Custom' },
+            { v: 'all', label: 'All Time' }, { v: 'month', label: 'This Month' },
+            { v: 'quarter', label: 'Last 3 Months' }, { v: 'year', label: 'This Year' }, { v: 'custom', label: 'Custom' },
           ] as const).map(opt => (
             <button key={opt.v} onClick={() => setDateRange(opt.v)} className={`tab-btn ${dateRange === opt.v ? 'active' : ''}`} style={{ fontSize: 11, padding: '4px 10px' }}>
               {opt.label}
@@ -147,7 +239,6 @@ export function AdminLeaveView({ employees, initialRequests }: {
             </>
           )}
         </div>
-        {/* Row 3: dropdowns */}
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <select value={empFilter} onChange={e => setEmpFilter(e.target.value)} className="field-input" style={{ width: 200, marginBottom: 0, fontSize: 12.5 }}>
             <option value="all">All Employees</option>
@@ -163,6 +254,13 @@ export function AdminLeaveView({ employees, initialRequests }: {
           </select>
         </div>
       </div>
+
+      {/* Pending notice */}
+      {counts.pending > 0 && (
+        <div style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>
+          {counts.pending} pending request{counts.pending !== 1 ? 's' : ''} awaiting review — click Review to action them.
+        </div>
+      )}
 
       {/* Table */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -186,11 +284,12 @@ export function AdminLeaveView({ employees, initialRequests }: {
                 <th>Submitted</th>
                 <th>Reviewed By</th>
                 <th>Approver Note</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0
-                ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>No leave requests match your filters.</td></tr>
+                ? <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>No leave requests match your filters.</td></tr>
                 : filtered.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontWeight: 500 }}>
@@ -216,6 +315,13 @@ export function AdminLeaveView({ employees, initialRequests }: {
                       {r.reviewed_by ? (emailMap[r.reviewed_by]?.name ?? r.reviewed_by) : '—'}
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 200 }}>{r.approver_note ?? '—'}</td>
+                    <td>
+                      {r.status === 'pending' && (
+                        <button onClick={() => setReviewing(r)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap' }}>
+                          Review
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
             </tbody>

@@ -19,6 +19,19 @@ type LeaveRequest = {
   reviewed_at: string | null
   created_at: string
 }
+type OtRequest = {
+  id: string
+  employee_id: string
+  date: string
+  ot_hours: number
+  reason: string | null
+  status: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  approver_note: string | null
+  created_at: string
+  employees?: { id: string; name: string; work_email: string } | null
+}
 
 const STATUS_BADGE: Record<string, string> = {
   pending: 'badge-amber',
@@ -160,12 +173,85 @@ function ActionModal({ request, employeeName, onClose, onDone }: {
   )
 }
 
-export function ApprovalsView({ employees, initialRequests }: {
+function OtActionModal({ request, employeeName, onClose, onDone }: {
+  request: OtRequest
+  employeeName: string
+  onClose: () => void
+  onDone: (updated: OtRequest) => void
+}) {
+  const [action, setAction] = useState<'approve' | 'deny'>('approve')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setSaving(true); setError('')
+    const res = await fetch('/api/admin/ot', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: request.id, action, note }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
+    onDone(data)
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Review OT Request</div>
+        <div className="modal-sub">{employeeName} · {request.ot_hours}h overtime · {fmt(request.date)}</div>
+
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', marginBottom: 18, fontSize: 13 }}>
+          <div><span style={{ color: 'var(--text-muted)' }}>Date: </span><strong>{fmt(request.date)}</strong></div>
+          <div style={{ marginTop: 6 }}><span style={{ color: 'var(--text-muted)' }}>OT Hours: </span><strong>{request.ot_hours}h</strong></div>
+          {request.reason && (
+            <div style={{ marginTop: 8, color: 'var(--text-secondary)' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Reason: </span>{request.reason}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          {(['approve', 'deny'] as const).map(a => (
+            <button key={a} onClick={() => setAction(a)}
+              className={`btn ${action === a ? (a === 'approve' ? 'btn-green' : 'btn-red') : 'btn-ghost'}`}
+              style={{ flex: 1, textTransform: 'capitalize' }}>
+              {a}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label className="field-label">Note <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
+          <textarea value={note} onChange={e => setNote(e.target.value)} className="field-input" rows={2}
+            style={{ resize: 'vertical' }} placeholder="e.g. Approved — overtime confirmed" />
+        </div>
+
+        {error && <p style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 12 }}>{error}</p>}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={submit} disabled={saving}
+            className={`btn ${action === 'approve' ? 'btn-green' : 'btn-red'}`} style={{ flex: 1 }}>
+            {saving ? 'Saving…' : action === 'approve' ? 'Approve OT' : 'Deny OT'}
+          </button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function ApprovalsView({ employees, initialRequests, initialOtRequests = [] }: {
   employees: Employee[]
   initialRequests: LeaveRequest[]
+  initialOtRequests?: OtRequest[]
 }) {
+  const [view, setView] = useState<'leave' | 'ot'>('leave')
   const [requests, setRequests] = useState(initialRequests)
+  const [otRequests, setOtRequests] = useState(initialOtRequests)
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
+  const [reviewingOt, setReviewingOt] = useState<OtRequest | null>(null)
   const [tab, setTab] = useState<'pending' | 'approved' | 'denied' | 'all'>('pending')
   const [search, setSearch] = useState('')
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'days_asc' | 'days_desc' | 'name_asc' | 'name_desc'>('oldest')
@@ -180,6 +266,7 @@ export function ApprovalsView({ employees, initialRequests }: {
   const emailMap = Object.fromEntries(employees.map(e => [e.work_email, e]))
 
   const pending = requests.filter(r => r.status === 'pending')
+  const pendingOt = otRequests.filter(r => r.status === 'pending')
 
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
   const weekAgoMs = Date.now() - 7 * 86400000
@@ -188,21 +275,10 @@ export function ApprovalsView({ employees, initialRequests }: {
     return `${y}-${m}-01`
   })()
 
-  const pendingToday = useMemo(() => {
-    return pending.filter(r => r.created_at.startsWith(todayStr))
-  }, [pending, todayStr])
-
-  const approvedThisWeek = useMemo(() => {
-    return requests.filter(r => r.status === 'approved' && new Date(r.reviewed_at ?? r.created_at).getTime() >= weekAgoMs)
-  }, [requests, weekAgoMs])
-
-  const approvedThisMonth = useMemo(() => {
-    return requests.filter(r => r.status === 'approved' && (r.reviewed_at ?? r.created_at) >= monthStart)
-  }, [requests, monthStart])
-
-  const deniedThisMonth = useMemo(() => {
-    return requests.filter(r => r.status === 'denied' && (r.reviewed_at ?? r.created_at) >= monthStart)
-  }, [requests, monthStart])
+  const pendingToday = useMemo(() => pending.filter(r => r.created_at.startsWith(todayStr)), [pending, todayStr])
+  const approvedThisWeek = useMemo(() => requests.filter(r => r.status === 'approved' && new Date(r.reviewed_at ?? r.created_at).getTime() >= weekAgoMs), [requests, weekAgoMs])
+  const approvedThisMonth = useMemo(() => requests.filter(r => r.status === 'approved' && (r.reviewed_at ?? r.created_at) >= monthStart), [requests, monthStart])
+  const deniedThisMonth = useMemo(() => requests.filter(r => r.status === 'denied' && (r.reviewed_at ?? r.created_at) >= monthStart), [requests, monthStart])
 
   const filtered = useMemo(() => {
     let base = tab === 'pending' ? pending
@@ -218,9 +294,7 @@ export function ApprovalsView({ employees, initialRequests }: {
       })
     }
 
-    if (approverFilter !== 'all') {
-      base = base.filter(r => r.reviewed_by === approverFilter)
-    }
+    if (approverFilter !== 'all') base = base.filter(r => r.reviewed_by === approverFilter)
 
     if (dateRange !== 'all') {
       const laToday = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
@@ -253,9 +327,20 @@ export function ApprovalsView({ employees, initialRequests }: {
     })
   }, [requests, tab, search, sortOrder, approverFilter, dateRange, customFrom, customTo, empMap, pending])
 
+  const filteredOt = useMemo(() => {
+    return [...otRequests]
+      .filter(r => tab === 'all' || r.status === tab)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+  }, [otRequests, tab])
+
   function handleDone(updated: LeaveRequest) {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
     setReviewing(null)
+  }
+
+  function handleOtDone(updated: OtRequest) {
+    setOtRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
+    setReviewingOt(null)
   }
 
   async function handleBulkApprove() {
@@ -275,18 +360,20 @@ export function ApprovalsView({ employees, initialRequests }: {
     setBulkSaving(false)
   }
 
-  const approverNames = [...new Set(
-    requests.filter(r => r.reviewed_by).map(r => r.reviewed_by!)
-  )]
-  function approverLabel(email: string) {
-    return emailMap[email]?.name ?? email
-  }
+  const approverNames = [...new Set(requests.filter(r => r.reviewed_by).map(r => r.reviewed_by!))]
+  function approverLabel(email: string) { return emailMap[email]?.name ?? email }
 
   const tabCounts = {
     pending: pending.length,
     approved: requests.filter(r => r.status === 'approved').length,
     denied: requests.filter(r => r.status === 'denied').length,
     all: requests.length,
+  }
+  const otTabCounts = {
+    pending: pendingOt.length,
+    approved: otRequests.filter(r => r.status === 'approved').length,
+    denied: otRequests.filter(r => r.status === 'denied').length,
+    all: otRequests.length,
   }
 
   return (
@@ -299,237 +386,277 @@ export function ApprovalsView({ employees, initialRequests }: {
           onDone={handleDone}
         />
       )}
+      {reviewingOt && (
+        <OtActionModal
+          request={reviewingOt}
+          employeeName={reviewingOt.employees?.name ?? empMap[reviewingOt.employee_id]?.name ?? 'Unknown'}
+          onClose={() => setReviewingOt(null)}
+          onDone={handleOtDone}
+        />
+      )}
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        {[
-          { label: 'Pending', count: tabCounts.pending, color: 'var(--amber)', sub: `${pendingToday.length} submitted today` },
-          { label: 'Approved This Week', count: approvedThisWeek.length, color: 'var(--green)', sub: null },
-          { label: 'Approved This Month', count: approvedThisMonth.length, color: 'var(--green)', sub: null },
-          { label: 'Denied This Month', count: deniedThisMonth.length, color: deniedThisMonth.length > 0 ? 'var(--red)' : 'var(--text-muted)', sub: null },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
-            <div className="stat-label">{s.label}</div>
-            <div className="stat-value" style={{ color: s.color }}>{s.count}</div>
-            {s.sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{s.sub}</div>}
-          </div>
-        ))}
+      {/* View switcher */}
+      <div style={{ display: 'flex', gap: 0 }}>
+        <button
+          onClick={() => setView('leave')}
+          className={`tab-btn ${view === 'leave' ? 'active' : ''}`}
+          style={{ borderRadius: '8px 0 0 8px', borderRight: 'none' }}
+        >
+          Leave Requests
+          {pending.length > 0 && <span style={{ marginLeft: 6, background: 'var(--amber)', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>{pending.length}</span>}
+        </button>
+        <button
+          onClick={() => setView('ot')}
+          className={`tab-btn ${view === 'ot' ? 'active' : ''}`}
+          style={{ borderRadius: '0 8px 8px 0' }}
+        >
+          OT Requests
+          {pendingOt.length > 0 && <span style={{ marginLeft: 6, background: 'var(--amber)', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px' }}>{pendingOt.length}</span>}
+        </button>
       </div>
 
-      {/* Controls */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {/* Row 1: Status tabs + date range + bulk */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      {view === 'leave' && (
+        <>
+          {/* Stats */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+            {[
+              { label: 'Pending', count: tabCounts.pending, color: 'var(--amber)', sub: `${pendingToday.length} submitted today` },
+              { label: 'Approved This Week', count: approvedThisWeek.length, color: 'var(--green)', sub: null },
+              { label: 'Approved This Month', count: approvedThisMonth.length, color: 'var(--green)', sub: null },
+              { label: 'Denied This Month', count: deniedThisMonth.length, color: deniedThisMonth.length > 0 ? 'var(--red)' : 'var(--text-muted)', sub: null },
+            ].map(s => (
+              <div key={s.label} className="stat-card">
+                <div className="stat-label">{s.label}</div>
+                <div className="stat-value" style={{ color: s.color }}>{s.count}</div>
+                {s.sub && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{s.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Controls */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <div className="tabs" style={{ marginBottom: 0 }}>
+                {(['pending', 'approved', 'denied', 'all'] as const).map(t => (
+                  <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }} className={`tab-btn ${tab === t ? 'active' : ''}`}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    {tabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({tabCounts[t]})</span>}
+                  </button>
+                ))}
+              </div>
+              {tab === 'pending' && selected.size > 0 && (
+                <button onClick={handleBulkApprove} disabled={bulkSaving} className="btn btn-green"
+                  style={{ fontSize: 12.5, padding: '6px 14px', whiteSpace: 'nowrap' }}>
+                  {bulkSaving ? 'Approving…' : `Approve ${selected.size} selected`}
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Submitted:</span>
+              {([
+                { v: 'all', label: 'All Time' }, { v: 'today', label: 'Today' },
+                { v: 'week', label: 'Last 7 Days' }, { v: 'month', label: 'This Month' }, { v: 'custom', label: 'Custom' },
+              ] as const).map(opt => (
+                <button key={opt.v} onClick={() => setDateRange(opt.v)} className={`tab-btn ${dateRange === opt.v ? 'active' : ''}`} style={{ fontSize: 11, padding: '4px 10px' }}>
+                  {opt.label}
+                </button>
+              ))}
+              {dateRange === 'custom' && (
+                <>
+                  <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="field-input" style={{ marginBottom: 0, width: 140, fontSize: 12 }} />
+                  <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>→</span>
+                  <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} min={customFrom} className="field-input" style={{ marginBottom: 0, width: 140, fontSize: 12 }} />
+                </>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <select value={sortOrder} onChange={e => setSortOrder(e.target.value as typeof sortOrder)} className="field-input" style={{ width: 170, marginBottom: 0, fontSize: 12.5 }}>
+                <option value="oldest">Submitted: Oldest first</option>
+                <option value="newest">Submitted: Newest first</option>
+                <option value="days_desc">Leave days: Most first</option>
+                <option value="days_asc">Leave days: Fewest first</option>
+                <option value="name_asc">Employee: A → Z</option>
+                <option value="name_desc">Employee: Z → A</option>
+              </select>
+              <select value={approverFilter} onChange={e => setApproverFilter(e.target.value)} className="field-input" style={{ width: 180, marginBottom: 0, fontSize: 12.5 }}>
+                <option value="all">All Approvers</option>
+                {approverNames.map(n => <option key={n} value={n}>{approverLabel(n)}</option>)}
+              </select>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search employee…" className="field-input" style={{ maxWidth: 180, marginBottom: 0, fontSize: 12.5 }} />
+            </div>
+          </div>
+
+          {tab === 'pending' && pending.filter(r => ageDays(r.created_at) >= 2).length > 0 && (
+            <div style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>
+              {pending.filter(r => ageDays(r.created_at) >= 6).length > 0 && (
+                <span style={{ color: 'var(--red)' }}>
+                  {pending.filter(r => ageDays(r.created_at) >= 6).length} request{pending.filter(r => ageDays(r.created_at) >= 6).length !== 1 ? 's' : ''} waiting 6+ days.{' '}
+                </span>
+              )}
+              Badges show days waiting — amber = 2–5 days, red = 6+ days.
+            </div>
+          )}
+
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    {tab === 'pending' && (
+                      <th style={{ width: 32 }}>
+                        <input type="checkbox"
+                          checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
+                          onChange={e => setSelected(e.target.checked ? new Set(filtered.map(r => r.id)) : new Set())}
+                          style={{ cursor: 'pointer' }} />
+                      </th>
+                    )}
+                    <th>Employee</th>
+                    <th>Type</th>
+                    <th>Period</th>
+                    <th>Days</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    {tab === 'pending' && <th></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.length === 0
+                    ? (
+                      <tr>
+                        <td colSpan={tab === 'pending' ? 9 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                          {search ? 'No requests match your search.' : tab === 'pending' ? 'No pending requests.' : 'No requests.'}
+                        </td>
+                      </tr>
+                    )
+                    : filtered.map(r => {
+                      const age = ageDays(r.created_at)
+                      return (
+                        <tr key={r.id}>
+                          {tab === 'pending' && (
+                            <td style={{ width: 32 }}>
+                              {r.status === 'pending' && (
+                                <input type="checkbox" checked={selected.has(r.id)}
+                                  onChange={e => setSelected(prev => {
+                                    const next = new Set(prev)
+                                    if (e.target.checked) next.add(r.id); else next.delete(r.id)
+                                    return next
+                                  })}
+                                  style={{ cursor: 'pointer' }} />
+                              )}
+                            </td>
+                          )}
+                          <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{empMap[r.employee_id]?.name ?? '—'}</td>
+                          <td>
+                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700, background: `${LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? '#6366f1'}18`, color: LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                              {leaveTypeLabel(r.leave_type ?? 'pto')}
+                            </span>
+                          </td>
+                          <td style={{ fontSize: 12.5 }}>
+                            {fmt(r.start_date)}{r.start_date !== r.end_date ? ` → ${fmt(r.end_date)}` : ''}
+                            {r.is_half_day && <span className="badge badge-blue" style={{ marginLeft: 6 }}>Half Day</span>}
+                          </td>
+                          <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{r.days_requested}</td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 12.5, maxWidth: 160 }}>{r.reason ?? '—'}</td>
+                          <td>
+                            <span className={`badge ${STATUS_BADGE[r.status] ?? 'badge-gray'}`}>{r.status}</span>
+                            {r.approver_note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{r.approver_note}</div>}
+                          </td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                            {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {r.status === 'pending' && <AgeBadge days={age} />}
+                          </td>
+                          {tab === 'pending' && (
+                            <td>
+                              {r.status === 'pending' && (
+                                <button onClick={() => setReviewing(r)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}>
+                                  Review
+                                </button>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {view === 'ot' && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+            {[
+              { label: 'Pending OT', count: otTabCounts.pending, color: 'var(--amber)' },
+              { label: 'Approved OT', count: otTabCounts.approved, color: 'var(--green)' },
+              { label: 'Denied OT', count: otTabCounts.denied, color: otTabCounts.denied > 0 ? 'var(--red)' : 'var(--text-muted)' },
+            ].map(s => (
+              <div key={s.label} className="stat-card">
+                <div className="stat-label">{s.label}</div>
+                <div className="stat-value" style={{ color: s.color }}>{s.count}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="tabs" style={{ marginBottom: 0 }}>
             {(['pending', 'approved', 'denied', 'all'] as const).map(t => (
-              <button key={t} onClick={() => { setTab(t); setSelected(new Set()) }} className={`tab-btn ${tab === t ? 'active' : ''}`}>
+              <button key={t} onClick={() => setTab(t)} className={`tab-btn ${tab === t ? 'active' : ''}`}>
                 {t.charAt(0).toUpperCase() + t.slice(1)}
-                {tabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({tabCounts[t]})</span>}
+                {otTabCounts[t] > 0 && <span style={{ marginLeft: 4, opacity: 0.7 }}>({otTabCounts[t]})</span>}
               </button>
             ))}
           </div>
-          {tab === 'pending' && selected.size > 0 && (
-            <button
-              onClick={handleBulkApprove}
-              disabled={bulkSaving}
-              className="btn btn-green"
-              style={{ fontSize: 12.5, padding: '6px 14px', whiteSpace: 'nowrap' }}
-            >
-              {bulkSaving ? 'Approving…' : `Approve ${selected.size} selected`}
-            </button>
-          )}
-        </div>
-        {/* Row 2: Date range filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Submitted:</span>
-          {([
-            { v: 'all', label: 'All Time' },
-            { v: 'today', label: 'Today' },
-            { v: 'week', label: 'Last 7 Days' },
-            { v: 'month', label: 'This Month' },
-            { v: 'custom', label: 'Custom' },
-          ] as const).map(opt => (
-            <button
-              key={opt.v}
-              onClick={() => setDateRange(opt.v)}
-              className={`tab-btn ${dateRange === opt.v ? 'active' : ''}`}
-              style={{ fontSize: 11, padding: '4px 10px' }}
-            >
-              {opt.label}
-            </button>
-          ))}
-          {dateRange === 'custom' && (
-            <>
-              <input
-                type="date"
-                value={customFrom}
-                onChange={e => setCustomFrom(e.target.value)}
-                className="field-input"
-                style={{ marginBottom: 0, width: 140, fontSize: 12 }}
-              />
-              <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>→</span>
-              <input
-                type="date"
-                value={customTo}
-                onChange={e => setCustomTo(e.target.value)}
-                min={customFrom}
-                className="field-input"
-                style={{ marginBottom: 0, width: 140, fontSize: 12 }}
-              />
-            </>
-          )}
-        </div>
-        {/* Row 3: Sort, approver filter, search */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <select
-            value={sortOrder}
-            onChange={e => setSortOrder(e.target.value as typeof sortOrder)}
-            className="field-input"
-            style={{ width: 170, marginBottom: 0, fontSize: 12.5 }}
-          >
-            <option value="oldest">Submitted: Oldest first</option>
-            <option value="newest">Submitted: Newest first</option>
-            <option value="days_desc">Leave days: Most first</option>
-            <option value="days_asc">Leave days: Fewest first</option>
-            <option value="name_asc">Employee: A → Z</option>
-            <option value="name_desc">Employee: Z → A</option>
-          </select>
-          <select
-            value={approverFilter}
-            onChange={e => setApproverFilter(e.target.value)}
-            className="field-input"
-            style={{ width: 180, marginBottom: 0, fontSize: 12.5 }}
-          >
-            <option value="all">All Approvers</option>
-            {approverNames.map(n => <option key={n} value={n}>{approverLabel(n)}</option>)}
-          </select>
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search employee…"
-            className="field-input"
-            style={{ maxWidth: 180, marginBottom: 0, fontSize: 12.5 }}
-          />
-        </div>
-      </div>
 
-      {/* Aging notice for pending */}
-      {tab === 'pending' && pending.filter(r => ageDays(r.created_at) >= 2).length > 0 && (
-        <div style={{ padding: '8px 14px', background: 'rgba(245,158,11,0.1)', borderRadius: 8, fontSize: 12.5, color: 'var(--amber)', fontWeight: 500 }}>
-          {pending.filter(r => ageDays(r.created_at) >= 6).length > 0 && (
-            <span style={{ color: 'var(--red)' }}>
-              {pending.filter(r => ageDays(r.created_at) >= 6).length} request{pending.filter(r => ageDays(r.created_at) >= 6).length !== 1 ? 's' : ''} waiting 6+ days.{' '}
-            </span>
-          )}
-          Badges show days waiting — amber = 2–5 days, red = 6+ days.
-        </div>
-      )}
-
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                {tab === 'pending' && (
-                  <th style={{ width: 32 }}>
-                    <input
-                      type="checkbox"
-                      checked={filtered.length > 0 && filtered.every(r => selected.has(r.id))}
-                      onChange={e => setSelected(e.target.checked ? new Set(filtered.map(r => r.id)) : new Set())}
-                      style={{ cursor: 'pointer' }}
-                    />
-                  </th>
-                )}
-                <th>Employee</th>
-                <th>Type</th>
-                <th>Period</th>
-                <th>Days</th>
-                <th>Reason</th>
-                <th>Status</th>
-                <th>Submitted</th>
-                {tab === 'pending' && <th></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0
-                ? (
+          <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan={tab === 'pending' ? 9 : 7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
-                      {search ? 'No requests match your search.' : tab === 'pending' ? 'No pending requests.' : 'No requests.'}
-                    </td>
+                    <th>Employee</th>
+                    <th>Date</th>
+                    <th>OT Hours</th>
+                    <th>Reason</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                    <th></th>
                   </tr>
-                )
-                : filtered.map(r => {
-                  const age = ageDays(r.created_at)
-                  return (
-                    <tr key={r.id}>
-                      {tab === 'pending' && (
-                        <td style={{ width: 32 }}>
-                          {r.status === 'pending' && (
-                            <input
-                              type="checkbox"
-                              checked={selected.has(r.id)}
-                              onChange={e => setSelected(prev => {
-                                const next = new Set(prev)
-                                if (e.target.checked) next.add(r.id); else next.delete(r.id)
-                                return next
-                              })}
-                              style={{ cursor: 'pointer' }}
-                            />
-                          )}
+                </thead>
+                <tbody>
+                  {filteredOt.length === 0
+                    ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>No OT requests.</td></tr>
+                    : filteredOt.map(r => (
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                          {r.employees?.name ?? empMap[r.employee_id]?.name ?? '—'}
                         </td>
-                      )}
-                      <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
-                        {empMap[r.employee_id]?.name ?? '—'}
-                      </td>
-                      <td>
-                        <span style={{
-                          fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700,
-                          background: `${LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? '#6366f1'}18`,
-                          color: LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? 'var(--accent)',
-                          textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap',
-                        }}>
-                          {leaveTypeLabel(r.leave_type ?? 'pto')}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: 12.5 }}>
-                        {fmt(r.start_date)}{r.start_date !== r.end_date ? ` → ${fmt(r.end_date)}` : ''}
-                        {r.is_half_day && (
-                          <span className="badge badge-blue" style={{ marginLeft: 6 }}>Half Day</span>
-                        )}
-                      </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{r.days_requested}</td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: 12.5, maxWidth: 160 }}>{r.reason ?? '—'}</td>
-                      <td>
-                        <span className={`badge ${STATUS_BADGE[r.status] ?? 'badge-gray'}`}>{r.status}</span>
-                        {r.approver_note && (
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{r.approver_note}</div>
-                        )}
-                      </td>
-                      <td style={{ color: 'var(--text-muted)', fontSize: 12.5, whiteSpace: 'nowrap' }}>
-                        {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                        {r.status === 'pending' && <AgeBadge days={age} />}
-                      </td>
-                      {tab === 'pending' && (
+                        <td style={{ fontSize: 12.5 }}>{fmt(r.date)}</td>
+                        <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.ot_hours}h</td>
+                        <td style={{ fontSize: 12.5, color: 'var(--text-muted)', maxWidth: 200 }}>{r.reason ?? '—'}</td>
+                        <td>
+                          <span className={`badge ${STATUS_BADGE[r.status] ?? 'badge-gray'}`}>{r.status}</span>
+                          {r.approver_note && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{r.approver_note}</div>}
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {r.status === 'pending' && <AgeBadge days={ageDays(r.created_at)} />}
+                        </td>
                         <td>
                           {r.status === 'pending' && (
-                            <button
-                              onClick={() => setReviewing(r)}
-                              className="btn btn-primary"
-                              style={{ fontSize: 12, padding: '5px 12px' }}
-                            >
+                            <button onClick={() => setReviewingOt(r)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}>
                               Review
                             </button>
                           )}
                         </td>
-                      )}
-                    </tr>
-                  )
-                })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

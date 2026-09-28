@@ -20,8 +20,12 @@ export default async function ApprovalsPage() {
     .select('*')
     .order('created_at', { ascending: false })
 
+  let otQuery = supabaseAdmin
+    .from('ot_requests')
+    .select('*, employees(id, name, work_email)')
+    .order('created_at', { ascending: false })
+
   if (session.user.role === 'approver') {
-    // Only show requests from employees assigned to this approver
     const { data: myTeam } = await supabaseAdmin
       .from('employees')
       .select('id')
@@ -30,23 +34,25 @@ export default async function ApprovalsPage() {
     const myTeamIds = (myTeam ?? []).map(e => e.id)
     if (myTeamIds.length > 0) {
       requestsQuery = requestsQuery.in('employee_id', myTeamIds)
+      otQuery = otQuery.in('employee_id', myTeamIds)
     } else {
-      // No team assigned — return empty
       requestsQuery = requestsQuery.eq('employee_id', 'none-00000000-0000-0000-0000-000000000000')
+      otQuery = otQuery.eq('employee_id', 'none-00000000-0000-0000-0000-000000000000')
     }
   }
 
-  const { data: requests } = await requestsQuery
+  const [{ data: requests }, { data: otRequests }] = await Promise.all([requestsQuery, otQuery])
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Approvals</h1>
-        <p className="page-subtitle">Review and action leave requests from your team.</p>
+        <p className="page-subtitle">Review and action leave and overtime requests from your team.</p>
       </div>
       <ApprovalsView
         employees={employees ?? []}
         initialRequests={requests ?? []}
+        initialOtRequests={otRequests ?? []}
       />
     </div>
   )

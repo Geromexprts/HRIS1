@@ -29,7 +29,9 @@ function timeAgo(dateStr: string) {
 export function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+  const [dropPos, setDropPos] = useState<{ left: number; bottom: number } | null>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     fetch('/api/notifications')
@@ -37,16 +39,23 @@ export function NotificationBell() {
       .then(data => { if (Array.isArray(data)) setNotifications(data) })
   }, [])
 
-  // Close on outside click
   useEffect(() => {
     function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) setOpen(false)
     }
     if (open) document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
   const unread = notifications.filter(n => !n.is_read).length
+
+  function handleToggle() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setDropPos({ left: r.right + 8, bottom: window.innerHeight - r.bottom })
+    }
+    setOpen(o => !o)
+  }
 
   async function markRead(id: string) {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n))
@@ -67,9 +76,10 @@ export function NotificationBell() {
   }
 
   return (
-    <div ref={ref} style={{ position: 'relative', flexShrink: 0 }}>
+    <div ref={wrapperRef} style={{ position: 'relative', flexShrink: 0 }}>
       <button
-        onClick={() => setOpen(o => !o)}
+        ref={btnRef}
+        onClick={handleToggle}
         className="sidebar-signout"
         title="Notifications"
         style={{ position: 'relative' }}
@@ -88,12 +98,17 @@ export function NotificationBell() {
         )}
       </button>
 
-      {open && (
+      {open && dropPos && (
         <div style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-          width: 288, background: 'var(--surface)',
-          border: '1px solid var(--border)', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', zIndex: 300,
+          position: 'fixed',
+          left: dropPos.left,
+          bottom: dropPos.bottom,
+          width: 288,
+          background: 'var(--surface)',
+          border: '1px solid var(--border)',
+          borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)',
+          zIndex: 1000,
           overflow: 'hidden',
         }}>
           <div style={{
