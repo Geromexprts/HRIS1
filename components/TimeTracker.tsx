@@ -237,6 +237,15 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   const [filterTo, setFilterTo] = useState('')
 
   const status = getStatus(entry)
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (earlyClockIn || status !== 'not_started') return
+    if (getLAMinutes() >= 7 * 60 + 50) return
+    const msUntil = (7 * 60 + 50 - getLAMinutes()) * 60 * 1000
+    const id = setTimeout(() => setTick(t => t + 1), msUntil)
+    return () => clearTimeout(id)
+  }, [earlyClockIn, status])
 
   useEffect(() => {
     if (status !== 'clocked_in') return
