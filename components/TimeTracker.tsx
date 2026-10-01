@@ -237,6 +237,17 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   const [filterTo, setFilterTo] = useState('')
 
   const status = getStatus(entry)
+  const [, setTick] = useState(0)
+
+  // Auto-reveal Clock In button at 7:50 AM without requiring a page refresh
+  useEffect(() => {
+    if (earlyClockIn || status !== 'not_started') return
+    if (getLAMinutes() >= 7 * 60 + 50) return
+    const id = setInterval(() => {
+      if (getLAMinutes() >= 7 * 60 + 50) { clearInterval(id); setTick(t => t + 1) }
+    }, 30000)
+    return () => clearInterval(id)
+  }, [earlyClockIn, status])
 
   useEffect(() => {
     if (status !== 'clocked_in') return
