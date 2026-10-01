@@ -312,7 +312,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {status === 'not_started' && (
             !earlyClockIn && getLAMinutes() < 7 * 60 + 50
-              ? <span style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>Clock-in available at 8:00 AM PST</span>
+              ? <span style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>Clock-in available at 7:50 AM PST</span>
               : <button onClick={() => doAction('clock_in')} disabled={loading} className="btn btn-green">Clock In</button>
           )}
           {status === 'clocked_in' && (

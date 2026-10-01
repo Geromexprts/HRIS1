@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       const { data: empRow } = await supabaseAdmin
         .from('employees').select('early_clock_in').eq('id', employeeId).single()
       if (!empRow?.early_clock_in) {
-        return NextResponse.json({ error: 'Clock-in is not available until 8:00 AM PST.' }, { status: 403 })
+        return NextResponse.json({ error: 'Clock-in is not available until 7:50 AM PST.' }, { status: 403 })
       }
     }
 
