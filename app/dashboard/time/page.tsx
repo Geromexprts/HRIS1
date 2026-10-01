@@ -11,18 +11,11 @@ export default async function TimePage() {
 
   const today = laToday()
 
-  const { data: todayEntry } = await supabaseAdmin
-    .from('time_entries')
-    .select('*')
-    .eq('employee_id', session.user.id)
-    .eq('date', today)
-    .single()
-
-  const { data: recentEntries } = await supabaseAdmin
-    .from('time_entries')
-    .select('*')
-    .eq('employee_id', session.user.id)
-    .order('date', { ascending: false })
+  const [{ data: todayEntry }, { data: recentEntries }, { data: empRow }] = await Promise.all([
+    supabaseAdmin.from('time_entries').select('*').eq('employee_id', session.user.id).eq('date', today).single(),
+    supabaseAdmin.from('time_entries').select('*').eq('employee_id', session.user.id).order('date', { ascending: false }),
+    supabaseAdmin.from('employees').select('early_clock_in').eq('id', session.user.id).single(),
+  ])
 
   return (
     <div>
@@ -34,6 +27,7 @@ export default async function TimePage() {
         employeeId={session.user.id}
         todayEntry={todayEntry ?? null}
         recentEntries={recentEntries ?? []}
+        earlyClockIn={empRow?.early_clock_in ?? false}
       />
     </div>
   )

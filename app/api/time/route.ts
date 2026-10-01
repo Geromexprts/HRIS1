@@ -29,6 +29,21 @@ export async function POST(req: NextRequest) {
   if (action === 'clock_in') {
     if (existing) return NextResponse.json({ error: 'Already clocked in today' }, { status: 400 })
 
+    // Enforce 8:00 AM earliest clock-in (10-min grace → 7:50 AM)
+    const laParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(new Date())
+    const laH = parseInt(laParts.find(p => p.type === 'hour')?.value ?? '0')
+    const laM = parseInt(laParts.find(p => p.type === 'minute')?.value ?? '0')
+    const laMinutes = laH * 60 + laM
+    if (laMinutes < 7 * 60 + 50) {
+      const { data: empRow } = await supabaseAdmin
+        .from('employees').select('early_clock_in').eq('id', employeeId).single()
+      if (!empRow?.early_clock_in) {
+        return NextResponse.json({ error: 'Clock-in is not available until 8:00 AM PST.' }, { status: 403 })
+      }
+    }
+
     const { data, error } = await supabaseAdmin
       .from('time_entries')
       .insert({ employee_id: employeeId, date: today, clock_in: now, breaks: [] })

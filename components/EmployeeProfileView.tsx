@@ -19,6 +19,7 @@ type Emp = {
   mobile_number: string | null
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
+  early_clock_in: boolean
 }
 type TimeEntry = {
   id: string; date: string; clock_in: string | null; clock_out: string | null
@@ -86,6 +87,8 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
 }) {
   const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
+  const [earlyClockIn, setEarlyClockIn] = useState(emp.early_clock_in)
+  const [toggling, setToggling] = useState(false)
 
   const totalHours = timeEntries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
   const regularHours = Math.min(totalHours, 8 * timeEntries.length)
@@ -184,6 +187,37 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                     <span style={{ fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{row.value}</span>
                   </div>
                 ))}
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Early Clock-In</span>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>Allow before 8:00 AM PST</div>
+                  </div>
+                  <button
+                    disabled={toggling}
+                    onClick={async () => {
+                      setToggling(true)
+                      const res = await fetch(`/api/admin/employees/${emp.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ early_clock_in: !earlyClockIn }),
+                      })
+                      if (res.ok) setEarlyClockIn(v => !v)
+                      setToggling(false)
+                    }}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none', cursor: toggling ? 'wait' : 'pointer',
+                      background: earlyClockIn ? 'var(--accent)' : 'var(--border)',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                    title={earlyClockIn ? 'Click to disable early clock-in' : 'Click to allow early clock-in'}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 3, left: earlyClockIn ? 23 : 3,
+                      width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }} />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

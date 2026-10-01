@@ -215,8 +215,17 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
   )
 }
 
-export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
-  employeeId: string; todayEntry: TimeEntry | null; recentEntries: TimeEntry[]
+function getLAMinutes(): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date())
+  const h = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0')
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
+  return h * 60 + m
+}
+
+export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockIn = false }: {
+  employeeId: string; todayEntry: TimeEntry | null; recentEntries: TimeEntry[]; earlyClockIn?: boolean
 }) {
   const [entry, setEntry] = useState<TimeEntry | null>(todayEntry)
   const [entries, setEntries] = useState<TimeEntry[]>(recentEntries)
@@ -302,7 +311,9 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries }: {
 
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {status === 'not_started' && (
-            <button onClick={() => doAction('clock_in')} disabled={loading} className="btn btn-green">Clock In</button>
+            !earlyClockIn && getLAMinutes() < 7 * 60 + 50
+              ? <span style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>Clock-in available at 8:00 AM PST</span>
+              : <button onClick={() => doAction('clock_in')} disabled={loading} className="btn btn-green">Clock In</button>
           )}
           {status === 'clocked_in' && (
             <button onClick={() => doAction('clock_out')} disabled={loading} className="btn btn-red">Clock Out</button>
