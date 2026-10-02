@@ -329,7 +329,9 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
           )}
           {status === 'clocked_out' && entry && !isLocked(entry.date) && (
             <>
-              <button onClick={() => doAction('resume')} disabled={loading} className="btn btn-primary">Resume</button>
+              {entry.date === new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) && (
+                <button onClick={() => doAction('resume')} disabled={loading} className="btn btn-primary">Resume</button>
+              )}
               <button onClick={() => setEditingEntry(entry)} className="btn btn-ghost">Edit Entry</button>
             </>
           )}

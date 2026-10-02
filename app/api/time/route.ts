@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
 
   if (action === 'resume') {
     if (!existing.clock_out) return NextResponse.json({ error: 'Not clocked out' }, { status: 400 })
+    if (existing.date !== today) return NextResponse.json({ error: 'Cannot resume a previous day\'s entry.' }, { status: 400 })
 
     const { data, error } = await supabaseAdmin
       .from('time_entries')
