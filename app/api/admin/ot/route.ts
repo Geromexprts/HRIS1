@@ -67,19 +67,6 @@ export async function PUT(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // On approval, add OT hours to the linked time entry so it shows in dashboard stats
-  if (action === 'approve' && existing.ot_hours) {
-    const entryQuery = existing.time_entry_id
-      ? supabaseAdmin.from('time_entries').select('id, total_hours').eq('id', existing.time_entry_id).single()
-      : supabaseAdmin.from('time_entries').select('id, total_hours').eq('employee_id', existing.employee_id).eq('date', existing.date).single()
-
-    const { data: entry } = await entryQuery
-    if (entry) {
-      const newTotal = Math.round(((entry.total_hours ?? 0) + existing.ot_hours) * 100) / 100
-      await supabaseAdmin.from('time_entries').update({ total_hours: newTotal }).eq('id', entry.id)
-    }
-  }
-
   // Send notification to employee
   await supabaseAdmin.from('notifications').insert({
     employee_id: existing.employee_id,
