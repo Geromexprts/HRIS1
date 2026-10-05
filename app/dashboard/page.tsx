@@ -62,6 +62,7 @@ async function AdminDashboard() {
     { data: payrollRows },
     { data: salaryRows },
     { data: lowPtoRows },
+    { data: approvedOtRows },
   ] = await Promise.all([
     supabaseAdmin.from('employees').select('id, name, office_location, monthly_salary, approver_id, manager_id').eq('status', 'active'),
     supabaseAdmin
@@ -119,6 +120,12 @@ async function AdminDashboard() {
       .from('pto_balances')
       .select('employee_id, current_balance')
       .lt('current_balance', 1),
+    supabaseAdmin
+      .from('ot_requests')
+      .select('employee_id, ot_hours')
+      .eq('status', 'approved')
+      .gte('date', periodStart)
+      .lte('date', today),
   ])
 
   // ── Derived values ───────────────────────────────────────────────────────
@@ -141,6 +148,16 @@ async function AdminDashboard() {
   const periodOT = Object.entries(periodHoursMap)
     .filter(([, h]) => h > 44)
     .map(([id, h]) => ({ id, hours: Math.round(h * 10) / 10 }))
+
+  // Approved OT this period (from ot_requests)
+  const approvedOtMap: Record<string, number> = {}
+  for (const r of (approvedOtRows ?? [])) {
+    approvedOtMap[r.employee_id] = Math.round(((approvedOtMap[r.employee_id] ?? 0) + (r.ot_hours ?? 0)) * 100) / 100
+  }
+  const approvedOtList = Object.entries(approvedOtMap)
+    .map(([id, hours]) => ({ id, name: nameById[id] ?? id.slice(0, 8), hours }))
+    .sort((a, b) => b.hours - a.hours)
+  const totalApprovedOtHours = Math.round(approvedOtList.reduce((s, e) => s + e.hours, 0) * 100) / 100
 
   // Payroll totals
   const totalSalary = (salaryRows ?? []).reduce((s, r) => s + (r.monthly_salary ?? 0), 0)
@@ -412,20 +429,26 @@ async function AdminDashboard() {
         </div>
 
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 4 }}>Overtime This Period</div>
-          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>Employees with &gt;44h logged in current pay period</p>
-          {periodOT.length === 0 ? (
-            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No overtime this period.</p>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div className="card-title" style={{ margin: 0 }}>Approved OT This Period</div>
+            {totalApprovedOtHours > 0 && (
+              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--amber)', fontVariantNumeric: 'tabular-nums' }}>{totalApprovedOtHours}h total</span>
+            )}
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>Approved OT requests · {periodStart} → {periodEnd}</p>
+          {approvedOtList.length === 0 ? (
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>No approved OT this period.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {periodOT.map(e => (
+              {approvedOtList.map(e => (
                 <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
-                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{nameById[e.id] ?? e.id.slice(0, 8)}</span>
+                  <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{e.name}</span>
                   <span style={{ color: 'var(--amber)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{e.hours}h</span>
                 </div>
               ))}
             </div>
           )}
+          <Link href="/dashboard/approvals" style={{ display: 'block', marginTop: 10, fontSize: 11, color: 'var(--accent)', fontWeight: 500, textDecoration: 'none' }}>View OT Requests →</Link>
         </div>
       </div>
 

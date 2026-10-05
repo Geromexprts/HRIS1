@@ -33,6 +33,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
     { data: deductionRow },
     { data: auditLog },
     { data: payslipHistory },
+    { data: approvedOtRows },
   ] = await Promise.all([
     supabaseAdmin.from('employees').select('*').eq('id', id).single(),
     supabaseAdmin.from('pto_balances').select('current_balance').eq('employee_id', id).single(),
@@ -41,7 +42,10 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
     supabaseAdmin.from('payroll_deductions').select('*').eq('pay_period_start', periodStart).eq('employee_id', id).single(),
     supabaseAdmin.from('audit_log').select('*').eq('employee_id', id).order('performed_at', { ascending: false }).limit(50),
     supabaseAdmin.from('payroll_deductions').select('*').eq('employee_id', id).order('pay_period_start', { ascending: false }).limit(24),
+    supabaseAdmin.from('ot_requests').select('ot_hours').eq('employee_id', id).eq('status', 'approved').gte('date', periodStart).lte('date', periodEnd),
   ])
+
+  const approvedOtHours = Math.round((approvedOtRows ?? []).reduce((s, r) => s + (r.ot_hours ?? 0), 0) * 100) / 100
 
   if (!emp) redirect('/dashboard/admin/employees')
 
@@ -101,6 +105,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
           early_clock_in: emp.early_clock_in ?? false,
           no_break_deduction: emp.no_break_deduction ?? false,
         }}
+        approvedOtHours={approvedOtHours}
         managerName={managerName}
         approverName={approverName}
         pto={pto?.current_balance ?? 0}

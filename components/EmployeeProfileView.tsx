@@ -73,7 +73,7 @@ function fmtMoney(n: number | null) {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd }: {
+export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, approvedOtHours = 0 }: {
   emp: Emp
   managerName: string | null
   approverName: string | null
@@ -85,6 +85,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   payslipHistory: PayslipRow[]
   periodStart: string
   periodEnd: string
+  approvedOtHours?: number
 }) {
   const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
@@ -94,7 +95,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [togglingBreak, setTogglingBreak] = useState(false)
 
   const totalHours = timeEntries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
-  const otHours = timeEntries.reduce((s, e) => s + Math.max(0, (e.total_hours ?? 0) - 8), 0)
+  const otHours = approvedOtHours
   const regularHours = totalHours - otHours
   const daysPresent = timeEntries.filter(e => e.clock_in).length
   const dailyRate = emp.monthly_salary ? (emp.monthly_salary / STANDARD_MONTHLY_HOURS) * 8 : null
