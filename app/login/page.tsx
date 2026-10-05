@@ -23,7 +23,7 @@ function LoginContent() {
     }
   }, [error])
 
-  if (status === 'loading' || status === 'authenticated') {
+  if (status === 'loading' || status === 'authenticated' || error === 'OAuthCallback') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
         <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Redirecting…</div>
