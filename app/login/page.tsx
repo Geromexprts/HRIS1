@@ -17,6 +17,12 @@ function LoginContent() {
     }
   }, [status, router])
 
+  useEffect(() => {
+    if (error === 'OAuthCallback') {
+      signIn('google', { callbackUrl: '/dashboard' })
+    }
+  }, [error])
+
   if (status === 'loading' || status === 'authenticated') {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg)' }}>
