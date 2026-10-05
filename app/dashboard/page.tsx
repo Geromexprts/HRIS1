@@ -149,6 +149,9 @@ async function AdminDashboard() {
     .filter(([, h]) => h > 44)
     .map(([id, h]) => ({ id, hours: Math.round(h * 10) / 10 }))
 
+  // Name lookup (used below)
+  const nameById = Object.fromEntries((allActive ?? []).map(e => [e.id, e.name]))
+
   // Approved OT this period (from ot_requests)
   const approvedOtMap: Record<string, number> = {}
   for (const r of (approvedOtRows ?? [])) {
@@ -180,9 +183,6 @@ async function AdminDashboard() {
     ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
   ]
   while (calCells.length % 7 !== 0) calCells.push(null)
-
-  // Name lookup for period OT (join by employee_id from allActive)
-  const nameById = Object.fromEntries((allActive ?? []).map(e => [e.id, e.name]))
 
   // ── Data quality alerts ──────────────────────────────────────────────────
   const noSalary = (allActive ?? []).filter((e: { monthly_salary: number | null }) => e.monthly_salary == null)
