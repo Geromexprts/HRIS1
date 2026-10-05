@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 
 type Notification = {
   id: string
@@ -8,6 +9,7 @@ type Notification = {
   body: string
   is_read: boolean
   created_at: string
+  link: string | null
 }
 
 const bellIcon = (
@@ -27,6 +29,7 @@ function timeAgo(dateStr: string) {
 }
 
 export function NotificationBell() {
+  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [open, setOpen] = useState(false)
   const [dropPos, setDropPos] = useState<{ left: number; bottom: number } | null>(null)
@@ -135,11 +138,14 @@ export function NotificationBell() {
               {notifications.map(n => (
                 <div
                   key={n.id}
-                  onClick={() => { if (!n.is_read) markRead(n.id) }}
+                  onClick={() => {
+                    if (!n.is_read) markRead(n.id)
+                    if (n.link) { setOpen(false); router.push(n.link) }
+                  }}
                   style={{
                     padding: '10px 14px',
                     borderBottom: '1px solid var(--border)',
-                    cursor: n.is_read ? 'default' : 'pointer',
+                    cursor: n.link ? 'pointer' : n.is_read ? 'default' : 'pointer',
                     background: n.is_read ? 'transparent' : 'var(--accent-soft)',
                     transition: 'background 0.15s',
                   }}

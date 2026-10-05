@@ -3,9 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
-function calcTotalHours(clockIn: string, clockOut: string) {
+function calcTotalHours(clockIn: string, clockOut: string, skipBreak = false) {
   const totalMs = new Date(clockOut).getTime() - new Date(clockIn).getTime()
-  return Math.max(0, Math.round((totalMs / 3600000 - 1) * 100) / 100)
+  return Math.max(0, Math.round((totalMs / 3600000 - (skipBreak ? 0 : 1)) * 100) / 100)
 }
 
 export async function POST(req: NextRequest) {
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { employee_id, date, clock_in, clock_out, edit_note } = await req.json()
+  const { employee_id, date, clock_in, clock_out, edit_note, skip_break } = await req.json()
   if (!employee_id || !date || !clock_in) {
     return NextResponse.json({ error: 'employee_id, date, and clock_in are required.' }, { status: 400 })
   }
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   if (existing) return NextResponse.json({ error: 'An entry already exists for this employee on this date.' }, { status: 409 })
 
-  const totalHours = clock_out ? calcTotalHours(clock_in, clock_out) : null
+  const totalHours = clock_out ? calcTotalHours(clock_in, clock_out, skip_break ?? false) : null
 
   const { data, error } = await supabaseAdmin
     .from('time_entries')
@@ -51,7 +51,7 @@ export async function PUT(req: NextRequest) {
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const { entryId, clock_in, clock_out, edit_note } = await req.json()
+  const { entryId, clock_in, clock_out, edit_note, skip_break } = await req.json()
 
   const { data: existing, error: fetchError } = await supabaseAdmin
     .from('time_entries')
@@ -73,11 +73,12 @@ export async function PUT(req: NextRequest) {
       original: { clock_in: existing.clock_in, clock_out: existing.clock_out, total_hours: existing.total_hours },
       updated: { clock_in, clock_out },
       edit_note: edit_note ?? null,
+      skip_break: skip_break ?? false,
     },
   })
 
   const totalHours = clock_in && clock_out
-    ? calcTotalHours(clock_in, clock_out)
+    ? calcTotalHours(clock_in, clock_out, skip_break ?? false)
     : existing.total_hours
 
   const { data, error } = await supabaseAdmin

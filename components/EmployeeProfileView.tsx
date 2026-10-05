@@ -20,6 +20,7 @@ type Emp = {
   emergency_contact_name: string | null
   emergency_contact_phone: string | null
   early_clock_in: boolean
+  no_break_deduction: boolean
 }
 type TimeEntry = {
   id: string; date: string; clock_in: string | null; clock_out: string | null
@@ -89,10 +90,12 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [earlyClockIn, setEarlyClockIn] = useState(emp.early_clock_in)
   const [toggling, setToggling] = useState(false)
+  const [noBreakDeduction, setNoBreakDeduction] = useState(emp.no_break_deduction)
+  const [togglingBreak, setTogglingBreak] = useState(false)
 
   const totalHours = timeEntries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
-  const regularHours = Math.min(totalHours, 8 * timeEntries.length)
-  const otHours = Math.max(0, totalHours - regularHours)
+  const otHours = timeEntries.reduce((s, e) => s + Math.max(0, (e.total_hours ?? 0) - 8), 0)
+  const regularHours = totalHours - otHours
   const daysPresent = timeEntries.filter(e => e.clock_in).length
   const dailyRate = emp.monthly_salary ? (emp.monthly_salary / STANDARD_MONTHLY_HOURS) * 8 : null
   const hourlyRate = emp.monthly_salary ? emp.monthly_salary / STANDARD_MONTHLY_HOURS : null
@@ -213,6 +216,37 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   >
                     <span style={{
                       position: 'absolute', top: 3, left: earlyClockIn ? 23 : 3,
+                      width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                    }} />
+                  </button>
+                </div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-muted)' }}>Skip Break Deduction</span>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>No 1-hour auto-deduction on clock-out</div>
+                  </div>
+                  <button
+                    disabled={togglingBreak}
+                    onClick={async () => {
+                      setTogglingBreak(true)
+                      const res = await fetch(`/api/admin/employees/${emp.id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ no_break_deduction: !noBreakDeduction }),
+                      })
+                      if (res.ok) setNoBreakDeduction(v => !v)
+                      setTogglingBreak(false)
+                    }}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none', cursor: togglingBreak ? 'wait' : 'pointer',
+                      background: noBreakDeduction ? 'var(--accent)' : 'var(--border)',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                    }}
+                    title={noBreakDeduction ? 'Click to re-enable break deduction' : 'Click to skip break deduction'}
+                  >
+                    <span style={{
+                      position: 'absolute', top: 3, left: noBreakDeduction ? 23 : 3,
                       width: 18, height: 18, borderRadius: '50%', background: '#fff',
                       transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                     }} />

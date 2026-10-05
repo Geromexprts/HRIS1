@@ -4,9 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 import { laToday, isPayPeriodLocked } from '@/lib/dates'
 
-function calcTotalHours(clockIn: string, clockOut: string) {
+function calcTotalHours(clockIn: string, clockOut: string, skipBreak = false) {
   const totalMs = new Date(clockOut).getTime() - new Date(clockIn).getTime()
-  return Math.max(0, Math.round((totalMs / 3600000 - 1) * 100) / 100)
+  return Math.max(0, Math.round((totalMs / 3600000 - (skipBreak ? 0 : 1)) * 100) / 100)
 }
 
 
@@ -57,7 +57,9 @@ export async function POST(req: NextRequest) {
   if (!existing) return NextResponse.json({ error: 'No active entry for today' }, { status: 400 })
 
   if (action === 'clock_out') {
-    const totalHours = calcTotalHours(existing.clock_in, now)
+    const { data: empRow } = await supabaseAdmin
+      .from('employees').select('no_break_deduction').eq('id', employeeId).single()
+    const totalHours = calcTotalHours(existing.clock_in, now, empRow?.no_break_deduction ?? false)
 
     const { data, error } = await supabaseAdmin
       .from('time_entries')
@@ -124,8 +126,10 @@ export async function PUT(req: NextRequest) {
   })
 
   // Recalculate total hours with edited times
+  const { data: empRowEdit } = await supabaseAdmin
+    .from('employees').select('no_break_deduction').eq('id', existing.employee_id).single()
   const totalHours = clock_in && clock_out
-    ? calcTotalHours(clock_in, clock_out)
+    ? calcTotalHours(clock_in, clock_out, empRowEdit?.no_break_deduction ?? false)
     : existing.total_hours
 
   const { data, error } = await supabaseAdmin

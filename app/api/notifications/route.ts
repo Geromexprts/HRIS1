@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from('notifications')
-    .select('id, title, body, is_read, created_at')
+    .select('id, title, body, is_read, created_at, link')
     .eq('employee_id', session.user.id)
     .order('created_at', { ascending: false })
     .limit(20)

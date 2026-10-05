@@ -149,6 +149,7 @@ export async function PUT(req: NextRequest) {
       employee_id: leave.employee_id,
       title: notifTitle,
       body: notifBody,
+      link: '/dashboard/leave',
     }),
     empForEmail?.work_email
       ? sendLeaveDecisionEmail({

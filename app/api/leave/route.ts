@@ -122,6 +122,7 @@ export async function POST(req: NextRequest) {
         employee_id: employee.approver_id,
         title: 'New Leave Request',
         body: `${employee.name} submitted a ${days_requested}-day leave request (${start_date}${effectiveEndDate !== start_date ? ` – ${effectiveEndDate}` : ''}).`,
+        link: '/dashboard/approvals',
       }),
       approver?.work_email
         ? sendLeaveSubmittedEmail({

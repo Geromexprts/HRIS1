@@ -197,6 +197,7 @@ function EditModal({ entry, employeeName, onClose, onSave, onDelete }: {
   const [clockIn, setClockIn] = useState(utcToLAInput(entry.clock_in))
   const [clockOut, setClockOut] = useState(utcToLAInput(entry.clock_out))
   const [note, setNote] = useState('')
+  const [skipBreak, setSkipBreak] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -207,7 +208,7 @@ function EditModal({ entry, employeeName, onClose, onSave, onDelete }: {
     setSaving(true)
     const res = await fetch('/api/admin/time', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: entry.id, clock_in: laInputToUTC(clockIn), clock_out: clockOut ? laInputToUTC(clockOut) : null, edit_note: note }),
+      body: JSON.stringify({ entryId: entry.id, clock_in: laInputToUTC(clockIn), clock_out: clockOut ? laInputToUTC(clockOut) : null, edit_note: note, skip_break: skipBreak }),
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
@@ -242,6 +243,13 @@ function EditModal({ entry, employeeName, onClose, onSave, onDelete }: {
             <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" /></div>
           <div><label className="field-label">Reason for edit</label>
             <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. employee reported wrong clock-out" className="field-input" /></div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+            <input type="checkbox" checked={skipBreak} onChange={e => setSkipBreak(e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }} />
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>Skip lunch break deduction</span>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>Hours saved as-is, no 1-hour deduction applied</div>
+            </div>
+          </label>
           {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
