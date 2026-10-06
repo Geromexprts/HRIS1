@@ -108,14 +108,11 @@ function laInputToUTC(localStr: string): string {
   const [datePart, timePart] = localStr.split('T')
   const [year, month, day] = datePart.split('-').map(Number)
   const [hours, minutes] = timePart.split(':').map(Number)
-  const utcGuess = Date.UTC(year, month - 1, day, hours, minutes)
-  const laParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: LA_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(new Date(utcGuess))
-  const laH = parseInt(laParts.find(p => p.type === 'hour')?.value ?? '0')
-  const laM = parseInt(laParts.find(p => p.type === 'minute')?.value ?? '0')
-  const offsetMs = ((hours - laH) * 60 + (minutes - laM)) * 60000
-  return new Date(utcGuess + offsetMs).toISOString()
+  for (const offsetH of [7, 8]) {
+    const candidate = new Date(Date.UTC(year, month - 1, day, hours + offsetH, minutes))
+    if (utcToLAInput(candidate.toISOString()) === localStr) return candidate.toISOString()
+  }
+  return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
 }
 
 // ── AddEntryModal ─────────────────────────────────────────────────────────────
