@@ -72,6 +72,26 @@ function fmtMoney(n: number | null) {
   if (n == null) return '—'
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+function utcToLAInput(iso: string): string {
+  const d = new Date(iso)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: LA_TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(d)
+  const get = (t: string) => parts.find(p => p.type === t)!.value
+  const h = get('hour') === '24' ? '00' : get('hour')
+  return `${get('year')}-${get('month')}-${get('day')}T${h}:${get('minute')}`
+}
+function laInputToUTC(localStr: string): string {
+  const [datePart, timePart] = localStr.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+  for (const offsetH of [7, 8]) {
+    const candidate = new Date(Date.UTC(year, month - 1, day, hours + offsetH, minutes))
+    if (utcToLAInput(candidate.toISOString()) === localStr) return candidate.toISOString()
+  }
+  return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
+}
 
 export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, approvedOtHours = 0 }: {
   emp: Emp
@@ -93,11 +113,61 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [toggling, setToggling] = useState(false)
   const [noBreakDeduction, setNoBreakDeduction] = useState(emp.no_break_deduction)
   const [togglingBreak, setTogglingBreak] = useState(false)
+  const [entries, setEntries] = useState<TimeEntry[]>(timeEntries)
+  const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
+  const [editClockIn, setEditClockIn] = useState('')
+  const [editClockOut, setEditClockOut] = useState('')
+  const [editReason, setEditReason] = useState('')
+  const [editSkipBreak, setEditSkipBreak] = useState(false)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
 
-  const totalHours = timeEntries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
+  function openEdit(e: TimeEntry) {
+    setEditingEntry(e)
+    setEditClockIn(e.clock_in ? utcToLAInput(e.clock_in) : '')
+    setEditClockOut(e.clock_out ? utcToLAInput(e.clock_out) : '')
+    setEditReason('')
+    setEditSkipBreak(false)
+    setEditError('')
+  }
+
+  async function saveEdit() {
+    if (!editingEntry) return
+    setEditSaving(true)
+    setEditError('')
+    try {
+      const res = await fetch('/api/admin/time', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingEntry.id,
+          clock_in: editClockIn ? laInputToUTC(editClockIn) : null,
+          clock_out: editClockOut ? laInputToUTC(editClockOut) : null,
+          reason: editReason || 'Admin correction',
+          skip_break: editSkipBreak,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        setEditError(data.error ?? 'Save failed')
+      } else {
+        const updated = await res.json()
+        setEntries(prev => prev.map(e => e.id === updated.id
+          ? { ...e, clock_in: updated.clock_in, clock_out: updated.clock_out, total_hours: updated.total_hours, is_edited: true }
+          : e
+        ))
+        setEditingEntry(null)
+      }
+    } catch {
+      setEditError('Network error')
+    }
+    setEditSaving(false)
+  }
+
+  const totalHours = entries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
   const otHours = approvedOtHours
   const regularHours = totalHours - otHours
-  const daysPresent = timeEntries.filter(e => e.clock_in).length
+  const daysPresent = entries.filter(e => e.clock_in).length
   const dailyRate = emp.monthly_salary ? (emp.monthly_salary / STANDARD_MONTHLY_HOURS) * 8 : null
   const hourlyRate = emp.monthly_salary ? emp.monthly_salary / STANDARD_MONTHLY_HOURS : null
   const netPay = deductionRow?.net_pay ?? emp.monthly_salary
@@ -333,13 +403,13 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th>
+                  <th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {timeEntries.length === 0
-                  ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No time entries this period.</td></tr>
-                  : timeEntries.map(e => {
+                {entries.length === 0
+                  ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No time entries this period.</td></tr>
+                  : entries.map(e => {
                     const ot = e.total_hours != null ? Math.max(0, e.total_hours - 8) : 0
                     return (
                       <tr key={e.id}>
@@ -349,6 +419,12 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                         <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (e.total_hours ?? 0) > 8 ? 'var(--amber)' : 'var(--text-primary)' }}>{fmtH(e.total_hours)}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: ot > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: ot > 0 ? 600 : 400 }}>{ot > 0 ? `+${fmtH(ot)}` : '—'}</td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.is_edited ? 'edited' : '—'}</td>
+                        <td>
+                          <button
+                            onClick={() => openEdit(e)}
+                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}
+                          >Edit</button>
+                        </td>
                       </tr>
                     )
                   })}
@@ -478,6 +554,62 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Time Entry Modal ── */}
+      {editingEntry && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setEditingEntry(null) }}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>Edit Time Entry</div>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtDate(editingEntry.date)}</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Clock In (LA time)</label>
+                <input
+                  type="datetime-local"
+                  value={editClockIn}
+                  onChange={e => setEditClockIn(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Clock Out (LA time)</label>
+                <input
+                  type="datetime-local"
+                  value={editClockOut}
+                  onChange={e => setEditClockOut(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Reason</label>
+                <input
+                  type="text"
+                  placeholder="Admin correction"
+                  value={editReason}
+                  onChange={e => setEditReason(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                <input type="checkbox" checked={editSkipBreak} onChange={e => setEditSkipBreak(e.target.checked)} />
+                <span>Skip lunch break deduction</span>
+              </label>
+            </div>
+            {editError && <p style={{ fontSize: 12, color: 'var(--red)', margin: 0 }}>{editError}</p>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setEditingEntry(null)} style={{ fontSize: 13, padding: '7px 16px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveEdit} disabled={editSaving} style={{ fontSize: 13, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', cursor: editSaving ? 'wait' : 'pointer', fontWeight: 600, opacity: editSaving ? 0.7 : 1 }}>
+                {editSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
       )}
