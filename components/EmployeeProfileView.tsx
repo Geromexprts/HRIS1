@@ -127,7 +127,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
     setEditClockIn(e.clock_in ? utcToLAInput(e.clock_in) : '')
     setEditClockOut(e.clock_out ? utcToLAInput(e.clock_out) : '')
     setEditReason('')
-    setEditSkipBreak(false)
+    setEditSkipBreak(noBreakDeduction)
     setEditError('')
   }
 
