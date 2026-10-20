@@ -140,10 +140,10 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: editingEntry.id,
+          entryId: editingEntry.id,
           clock_in: editClockIn ? laInputToUTC(editClockIn) : null,
           clock_out: editClockOut ? laInputToUTC(editClockOut) : null,
-          reason: editReason || 'Admin correction',
+          edit_note: editReason || 'Admin correction',
           skip_break: editSkipBreak,
         }),
       })
