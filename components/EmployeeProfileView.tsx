@@ -121,6 +121,54 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [editSkipBreak, setEditSkipBreak] = useState(false)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addDate, setAddDate] = useState('')
+  const [addClockIn, setAddClockIn] = useState('')
+  const [addClockOut, setAddClockOut] = useState('')
+  const [addNote, setAddNote] = useState('')
+  const [addSkipBreak, setAddSkipBreak] = useState(false)
+  const [addSaving, setAddSaving] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  function openAddModal() {
+    setAddDate('')
+    setAddClockIn('')
+    setAddClockOut('')
+    setAddNote('')
+    setAddSkipBreak(noBreakDeduction)
+    setAddError('')
+    setShowAddModal(true)
+  }
+
+  async function saveAdd() {
+    if (!addDate || !addClockIn) { setAddError('Date and clock-in are required.'); return }
+    setAddSaving(true)
+    setAddError('')
+    try {
+      const res = await fetch('/api/admin/time', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          employee_id: emp.id,
+          date: addDate,
+          clock_in: laInputToUTC(`${addDate}T${addClockIn}`),
+          clock_out: addClockOut ? laInputToUTC(`${addDate}T${addClockOut}`) : null,
+          edit_note: addNote || null,
+          skip_break: addSkipBreak,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setAddError(data.error ?? 'Failed to add entry.')
+      } else {
+        setEntries(prev => [data, ...prev].sort((a, b) => b.date.localeCompare(a.date)))
+        setShowAddModal(false)
+      }
+    } catch {
+      setAddError('Network error')
+    }
+    setAddSaving(false)
+  }
 
   function openEdit(e: TimeEntry) {
     setEditingEntry(e)
@@ -178,7 +226,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
 
   const TABS = [
     { id: 'overview', label: 'Overview' },
-    { id: 'time', label: `Time Log (${timeEntries.length})` },
+    { id: 'time', label: `Time Log (${entries.length})` },
     { id: 'leave', label: `Leave (${leaveRequests.length})` },
     { id: 'payroll', label: 'Payroll' },
     { id: 'audit', label: `Audit Trail (${auditLog.length})` },
@@ -393,10 +441,15 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       {/* ── Time Log ── */}
       {tab === 'time' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between' }}>
+          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Time Log</div>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              {periodStart} → {periodEnd} · {daysPresent} days · {fmtH(Math.round(totalHours * 10) / 10)} total
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                {periodStart} → {periodEnd} · {daysPresent} days · {fmtH(Math.round(totalHours * 10) / 10)} total
+              </div>
+              <button onClick={openAddModal} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                + Add Entry
+              </button>
             </div>
           </div>
           <div className="table-wrap">
@@ -554,6 +607,70 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add Time Entry Modal ── */}
+      {showAddModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowAddModal(false) }}>
+          <div className="card" style={{ width: '100%', maxWidth: 420, padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Add Past Time Entry</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Date</label>
+                <input
+                  type="date"
+                  value={addDate}
+                  onChange={e => setAddDate(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Clock In (LA time)</label>
+                  <input
+                    type="time"
+                    value={addClockIn}
+                    onChange={e => setAddClockIn(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Clock Out <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
+                  <input
+                    type="time"
+                    value={addClockOut}
+                    onChange={e => setAddClockOut(e.target.value)}
+                    style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                  />
+                </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>Note <span style={{ color: 'var(--text-muted)', textTransform: 'none', fontWeight: 400 }}>(optional)</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. employee forgot to clock in"
+                  value={addNote}
+                  onChange={e => setAddNote(e.target.value)}
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                <input type="checkbox" checked={addSkipBreak} onChange={e => setAddSkipBreak(e.target.checked)} />
+                <span>Skip lunch break deduction</span>
+              </label>
+            </div>
+            {addError && <p style={{ fontSize: 12, color: 'var(--red)', margin: 0 }}>{addError}</p>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAddModal(false)} style={{ fontSize: 13, padding: '7px 16px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveAdd} disabled={addSaving} style={{ fontSize: 13, padding: '7px 16px', borderRadius: 7, border: 'none', background: 'var(--accent)', color: '#fff', cursor: addSaving ? 'wait' : 'pointer', fontWeight: 600, opacity: addSaving ? 0.7 : 1 }}>
+                {addSaving ? 'Adding…' : 'Add Entry'}
+              </button>
+            </div>
           </div>
         </div>
       )}
