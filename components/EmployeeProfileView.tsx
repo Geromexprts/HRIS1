@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { leaveTypeLabel } from '@/lib/countries'
 
@@ -115,6 +115,18 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [toggling, setToggling] = useState(false)
   const [noBreakDeduction, setNoBreakDeduction] = useState(emp.no_break_deduction)
   const [togglingBreak, setTogglingBreak] = useState(false)
+  const [empType, setEmpType] = useState(emp.employment_type ?? 'full-time')
+  const [empEndDate, setEmpEndDate] = useState(emp.employment_end_date ?? '')
+  const [empSalary, setEmpSalary] = useState<number | null>(emp.monthly_salary)
+  const [empHourlyRate, setEmpHourlyRate] = useState<number | null>(emp.hourly_rate)
+  const [empEditField, setEmpEditField] = useState<string | null>(null)
+  const [empEditVal, setEmpEditVal] = useState('')
+  const [empSaving, setEmpSaving] = useState(false)
+  const [empError, setEmpError] = useState('')
+  const [otUnlocks, setOtUnlocks] = useState<{ id: string; date: string }[]>([])
+  const [otUnlockDate, setOtUnlockDate] = useState('')
+  const [otUnlockSaving, setOtUnlockSaving] = useState(false)
+  const [otUnlockError, setOtUnlockError] = useState('')
   const [entries, setEntries] = useState<TimeEntry[]>(timeEntries)
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editClockIn, setEditClockIn] = useState('')
@@ -131,6 +143,65 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [addSkipBreak, setAddSkipBreak] = useState(false)
   const [addSaving, setAddSaving] = useState(false)
   const [addError, setAddError] = useState('')
+
+  async function saveEmpField(field: string, value: unknown) {
+    setEmpSaving(true)
+    setEmpError('')
+    try {
+      const res = await fetch(`/api/admin/employees/${emp.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [field]: value === '' ? null : value }),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        setEmpError(d.error ?? 'Save failed')
+      } else {
+        const d = await res.json()
+        if (field === 'employment_type') setEmpType(d.employment_type ?? 'full-time')
+        if (field === 'employment_end_date') setEmpEndDate(d.employment_end_date ?? '')
+        if (field === 'monthly_salary') setEmpSalary(d.monthly_salary)
+        if (field === 'hourly_rate') setEmpHourlyRate(d.hourly_rate)
+        setEmpEditField(null)
+      }
+    } catch {
+      setEmpError('Network error')
+    }
+    setEmpSaving(false)
+  }
+
+  useEffect(() => {
+    fetch(`/api/admin/ot-unlock?employee_id=${emp.id}`)
+      .then(r => r.ok ? r.json() : [])
+      .then(d => Array.isArray(d) ? setOtUnlocks(d) : null)
+      .catch(() => null)
+  }, [emp.id])
+
+  async function addOtUnlock() {
+    if (!otUnlockDate) return
+    setOtUnlockSaving(true)
+    setOtUnlockError('')
+    try {
+      const res = await fetch('/api/admin/ot-unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: emp.id, date: otUnlockDate }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setOtUnlockError(d.error ?? 'Failed'); }
+      else { setOtUnlocks(prev => [...prev.filter(u => u.date !== d.date), d]); setOtUnlockDate('') }
+    } catch { setOtUnlockError('Network error') }
+    setOtUnlockSaving(false)
+  }
+
+  async function revokeOtUnlock(date: string) {
+    await fetch('/api/admin/ot-unlock', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ employee_id: emp.id, date }),
+    })
+    setOtUnlocks(prev => prev.filter(u => u.date !== date))
+  }
 
   function openAddModal() {
     setAddDate('')
@@ -301,11 +372,60 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <div className="card">
               <div className="card-title" style={{ marginBottom: 14 }}>Employment</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+                {/* Editable: Type */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Type</span>
+                  {empEditField === 'employment_type' ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select value={empEditVal} onChange={e => setEmpEditVal(e.target.value)} style={{ fontSize: 12, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}>
+                        {['full-time', 'part-time', 'hourly', 'contractor'].map(o => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                      <button disabled={empSaving} onClick={() => saveEmpField('employment_type', empEditVal)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                      <button onClick={() => setEmpEditField(null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{empType}</span>
+                      <button onClick={() => { setEmpEditField('employment_type'); setEmpEditVal(empType); setEmpError('') }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>Edit</button>
+                    </div>
+                  )}
+                </div>
+                {/* Editable: Monthly Salary */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Monthly Salary</span>
+                  {empEditField === 'monthly_salary' ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input type="number" value={empEditVal} onChange={e => setEmpEditVal(e.target.value)} min={0} step={0.01} style={{ width: 100, fontSize: 12, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+                      <button disabled={empSaving} onClick={() => saveEmpField('monthly_salary', empEditVal ? parseFloat(empEditVal) : null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                      <button onClick={() => setEmpEditField(null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(empSalary)}</span>
+                      <button onClick={() => { setEmpEditField('monthly_salary'); setEmpEditVal(empSalary != null ? String(empSalary) : ''); setEmpError('') }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>Edit</button>
+                    </div>
+                  )}
+                </div>
+                {/* Editable: Hourly Rate */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Hourly Rate</span>
+                  {empEditField === 'hourly_rate' ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input type="number" value={empEditVal} onChange={e => setEmpEditVal(e.target.value)} min={0} step={0.01} style={{ width: 100, fontSize: 12, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+                      <button disabled={empSaving} onClick={() => saveEmpField('hourly_rate', empEditVal ? parseFloat(empEditVal) : null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                      <button onClick={() => setEmpEditField(null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>{empHourlyRate != null ? `$${empHourlyRate.toFixed(2)}/hr` : '—'}</span>
+                      <button onClick={() => { setEmpEditField('hourly_rate'); setEmpEditVal(empHourlyRate != null ? String(empHourlyRate) : ''); setEmpError('') }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>Edit</button>
+                    </div>
+                  )}
+                </div>
+                {/* Read-only rows */}
                 {[
-                  { label: 'Type', value: emp.employment_type ?? 'full-time' },
                   { label: 'Status', value: emp.status },
                   { label: 'Start Date', value: emp.employment_start_date ? fmtDate(emp.employment_start_date) : '—' },
-                  { label: 'End Date', value: emp.employment_end_date ? fmtDate(emp.employment_end_date) : '—' },
                   { label: 'Tenure', value: emp.employment_start_date ? tenure(emp.employment_start_date) : '—' },
                   { label: 'Manager', value: managerName ?? '—' },
                   { label: 'Approver', value: approverName ?? '—' },
@@ -316,6 +436,23 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                     <span style={{ fontWeight: 500, color: 'var(--text-primary)', textTransform: 'capitalize' }}>{row.value}</span>
                   </div>
                 ))}
+                {/* Editable: End Date */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>End Date</span>
+                  {empEditField === 'employment_end_date' ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input type="date" value={empEditVal} onChange={e => setEmpEditVal(e.target.value)} style={{ fontSize: 12, padding: '2px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+                      <button disabled={empSaving} onClick={() => saveEmpField('employment_end_date', empEditVal || null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+                      <button onClick={() => setEmpEditField(null)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <span style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{empEndDate ? fmtDate(empEndDate) : '—'}</span>
+                      <button onClick={() => { setEmpEditField('employment_end_date'); setEmpEditVal(empEndDate); setEmpError('') }} style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>Edit</button>
+                    </div>
+                  )}
+                </div>
+                {empError && <div style={{ fontSize: 12, color: 'var(--red)', marginTop: 4 }}>{empError}</div>}
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <span style={{ color: 'var(--text-muted)' }}>Early Clock-In</span>
@@ -438,6 +575,39 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
               ))}
             </div>
           </div>
+          {/* OT Date Unlocks */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 4 }}>OT Past-Date Unlocks</div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Allow this employee to file overtime for a specific past date. Unlocks are one-time — they can be revoked once used.
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: otUnlocks.length > 0 ? 12 : 0 }}>
+              <input
+                type="date"
+                value={otUnlockDate}
+                onChange={e => setOtUnlockDate(e.target.value)}
+                style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+              />
+              <button
+                disabled={!otUnlockDate || otUnlockSaving}
+                onClick={addOtUnlock}
+                style={{ fontSize: 12, padding: '5px 12px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, opacity: !otUnlockDate ? 0.5 : 1 }}
+              >
+                {otUnlockSaving ? 'Saving…' : 'Unlock Date'}
+              </button>
+              {otUnlockError && <span style={{ fontSize: 12, color: 'var(--red)' }}>{otUnlockError}</span>}
+            </div>
+            {otUnlocks.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {otUnlocks.map(u => (
+                  <div key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '3px 8px 3px 10px', borderRadius: 20, border: '1px solid var(--border)', background: 'color-mix(in srgb, var(--amber) 10%, var(--surface))' }}>
+                    <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{u.date}</span>
+                    <button onClick={() => revokeOtUnlock(u.date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, padding: '0 2px', lineHeight: 1 }} title="Revoke unlock">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <Link href="/dashboard/admin/employees" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>← All Employees</Link>
             <Link href={`/dashboard/admin/employees/${emp.id}`} onClick={() => setTab('audit')} style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'none' }}>View Audit Trail →</Link>
@@ -463,14 +633,20 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th></th>
+                  <th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Missing</th><th>Note</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {entries.length === 0
-                  ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No time entries this period.</td></tr>
+                  ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No time entries this period.</td></tr>
                   : entries.map(e => {
                     const ot = e.total_hours != null ? Math.max(0, e.total_hours - 8) : 0
+                    const hasPaidPto = leaveRequests.some(lr =>
+                      lr.status === 'approved' && lr.leave_type !== 'unpaid' &&
+                      lr.start_date <= e.date && lr.end_date >= e.date
+                    )
+                    const cappedH = Math.min(e.total_hours ?? 0, 8)
+                    const missing = hasPaidPto ? 0 : Math.max(0, 8 - cappedH)
                     return (
                       <tr key={e.id}>
                         <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
@@ -478,6 +654,9 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                         <td style={{ fontSize: 12.5 }}>{e.clock_out ? fmtTime(e.clock_out) : <span className="badge badge-amber">Missing</span>}</td>
                         <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (e.total_hours ?? 0) > 8 ? 'var(--amber)' : 'var(--text-primary)' }}>{fmtH(e.total_hours)}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: ot > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: ot > 0 ? 600 : 400 }}>{ot > 0 ? `+${fmtH(ot)}` : '—'}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums', color: missing > 0 ? 'var(--red)' : hasPaidPto ? 'var(--green)' : 'var(--text-muted)', fontWeight: missing > 0 ? 600 : 400, fontSize: 12.5 }}>
+                          {missing > 0 ? fmtH(missing) : hasPaidPto ? 'PTO' : '—'}
+                        </td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.is_edited ? 'edited' : '—'}</td>
                         <td>
                           <button

@@ -29,7 +29,7 @@ export default async function PayrollPage() {
       .order('name'),
     supabaseAdmin
       .from('time_entries')
-      .select('employee_id, total_hours')
+      .select('employee_id, total_hours, date')
       .gte('date', periodStart)
       .lte('date', periodEnd)
       .not('total_hours', 'is', null),
@@ -93,7 +93,8 @@ export default async function PayrollPage() {
 
   const hoursMap: Record<string, number> = {}
   for (const e of entries ?? []) {
-    hoursMap[e.employee_id] = (hoursMap[e.employee_id] ?? 0) + (e.total_hours ?? 0)
+    // cap at 8h/day — OT is tracked separately via ot_requests
+    hoursMap[e.employee_id] = (hoursMap[e.employee_id] ?? 0) + Math.min(e.total_hours ?? 0, 8)
   }
 
   const leaveMap: Record<string, number> = {}

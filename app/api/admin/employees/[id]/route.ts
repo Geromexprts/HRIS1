@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
-const ALLOWED_FIELDS = ['early_clock_in', 'no_break_deduction', 'employment_type', 'hourly_rate', 'employment_end_date'] as const
+const ALLOWED_FIELDS = ['early_clock_in', 'no_break_deduction', 'employment_type', 'hourly_rate', 'employment_end_date', 'monthly_salary'] as const
 type AllowedField = typeof ALLOWED_FIELDS[number]
 
 export async function PATCH(
@@ -30,7 +30,7 @@ export async function PATCH(
     .from('employees')
     .update(update)
     .eq('id', id)
-    .select('id, early_clock_in, no_break_deduction, employment_type, hourly_rate, employment_end_date')
+    .select('id, early_clock_in, no_break_deduction, employment_type, hourly_rate, employment_end_date, monthly_salary')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

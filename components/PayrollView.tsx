@@ -58,7 +58,7 @@ function computeNetPay(
   if (emp.employment_type === 'hourly') {
     const rate = emp.hourly_rate
     if (rate == null) return null
-    return Math.round((totalHours * rate + incentivesTotal) * 100) / 100
+    return Math.round(((totalHours + approvedOtHours) * rate + incentivesTotal) * 100) / 100
   }
 
   const salary = emp.monthly_salary
@@ -295,7 +295,7 @@ export function PayrollView({
   function exportCSV() {
     const headers = [
       'Name', 'Location', 'Type', 'Monthly Salary', 'Hourly Rate',
-      'Working Days', 'Hours Worked', 'Approved OT Hrs',
+      'Working Days', 'Expected Hours', 'Hours Worked', 'Approved OT Hrs',
       'Paid PTO Days', 'Unpaid PTO Days', 'Missing Hours',
       'PTO Balance', 'PTO Used',
       'Intake Booking', 'Google Review', 'Performance', 'Referral', 'Reimbursements', 'Total Incentives',
@@ -309,7 +309,8 @@ export function PayrollView({
       const unpaidPto = ptoUnpaidMap[e.id] ?? 0
       const paidPto = ptoPaidMap[e.id] ?? 0
       const workingDays = workingDaysMap[e.id] ?? 0
-      const missingHours = Math.max(0, workingDays * 8 - hours)
+      const expectedHours = workingDays * 8
+      const missingHours = Math.max(0, expectedHours - hours - paidPto * 8)
       const incentivesTotal = Object.values(inc).reduce((s, v) => s + (v ?? 0), 0)
       const netPay = computeNetPay(e, hours, otHrs, unpaidPto, inc)
       return [
@@ -319,6 +320,7 @@ export function PayrollView({
         e.monthly_salary ?? '',
         e.hourly_rate ?? '',
         workingDays,
+        expectedHours,
         hours.toFixed(2),
         otHrs.toFixed(2),
         paidPto,
@@ -417,6 +419,7 @@ export function PayrollView({
                 <th>Location</th>
                 <th>Salary / Rate</th>
                 <th>Working Days</th>
+                <th>Expected Hrs</th>
                 <th>Hours Worked</th>
                 <th>Approved OT</th>
                 <th>Paid PTO</th>
@@ -431,7 +434,7 @@ export function PayrollView({
               {employees.length === 0
                 ? (
                   <tr>
-                    <td colSpan={12} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                    <td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
                       No active employees.
                     </td>
                   </tr>
@@ -445,7 +448,8 @@ export function PayrollView({
                   const paidPtoDays = ptoPaidMap[e.id] ?? 0
                   const unpaidPtoDays = ptoUnpaidMap[e.id] ?? 0
                   const workingDays = workingDaysMap[e.id] ?? 0
-                  const missingHours = Math.max(0, workingDays * 8 - totalHours)
+                  const expectedHours = workingDays * 8
+                  const missingHours = Math.max(0, expectedHours - totalHours - paidPtoDays * 8)
                   const pto = ptoMap[e.id] ?? 0
                   const netPay = computeNetPay(e, totalHours, approvedOtHours, unpaidPtoDays, inc)
                   const incentivesTotal = Object.values(inc).reduce((s, v) => s + (v ?? 0), 0)
@@ -499,6 +503,9 @@ export function PayrollView({
                       <td style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>
                         {workingDays > 0 ? workingDays : '—'}
                       </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', textAlign: 'center' }}>
+                        {expectedHours > 0 ? `${expectedHours}h` : '—'}
+                      </td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: totalHours > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
                         {totalHours > 0 ? totalHours.toFixed(1) : '—'}
                       </td>
@@ -511,8 +518,15 @@ export function PayrollView({
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: unpaidPtoDays > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
                         {unpaidPtoDays > 0 ? `${unpaidPtoDays}d` : '—'}
                       </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', color: missingHours > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
-                        {missingHours > 0 ? missingHours.toFixed(1) : '—'}
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {missingHours > 0 ? (
+                          <Link
+                            href={`/dashboard/admin/employees/${e.id}/missing-hours?periodStart=${periodStart}&periodEnd=${periodEnd}`}
+                            style={{ color: 'var(--red)', fontWeight: 600, textDecoration: 'none' }}
+                          >
+                            {missingHours.toFixed(1)}
+                          </Link>
+                        ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
                       <td>
                         <span style={{

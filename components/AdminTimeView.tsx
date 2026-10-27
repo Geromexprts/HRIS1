@@ -300,7 +300,9 @@ function StatusBadge({ entry, today, nowMs }: { entry?: TimeEntry; today: string
 
 // ── AdminTimeView ─────────────────────────────────────────────────────────────
 
-export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd, approvedOtMap = {}, ptoPaidMap = {}, ptoUnpaidMap = {} }: {
+type LeaveRow = { employee_id: string; start_date: string; end_date: string; leave_type: string | null; status: string; days_requested: number }
+
+export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtMap = {}, ptoPaidMap = {}, ptoUnpaidMap = {}, allLeaveRequests = [] }: {
   employees: Employee[]
   entries: TimeEntry[]
   edits: AuditEntry[]
@@ -309,9 +311,12 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   weekStart: string
   periodStart: string
   periodEnd: string
+  prevPeriodStart?: string
+  prevPeriodEnd?: string
   approvedOtMap?: Record<string, number>
   ptoPaidMap?: Record<string, number>
   ptoUnpaidMap?: Record<string, number>
+  allLeaveRequests?: LeaveRow[]
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'today' | 'yesterday' | 'weekly' | 'monthly' | 'edits'>('today')
@@ -322,6 +327,8 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   const [monthEntriesEmp, setMonthEntriesEmp] = useState<Employee | null>(null)
   const [empFilter, setEmpFilter] = useState<string>('all')
   const [refreshing, setRefreshing] = useState(false)
+  const [viewFrom, setViewFrom] = useState(periodStart)
+  const [viewTo, setViewTo] = useState(periodEnd)
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 30000)
@@ -345,7 +352,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   )
 
   const weekDays = genDays(weekStart, today)
-  const periodDays = genDays(periodStart, periodEnd)
+  const periodDays = genDays(viewFrom, viewTo)
   const periodBizDays = bizDays(periodDays)
 
   const visibleEmps = empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter)
@@ -681,6 +688,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   // ── Monthly ───────────────────────────────────────────────────────────────
 
   function renderMonthly() {
+    const isCurrentPeriod = viewFrom === periodStart && viewTo === periodEnd
+    const isPrevPeriod = prevPeriodStart && viewFrom === prevPeriodStart && viewTo === prevPeriodEnd
+
     const rows = employees.map(emp => {
       const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
       const total = empEntries.reduce((s: number, e) => s + (e ? (entryHours(e, nowMs) ?? 0) : 0), 0)
@@ -700,6 +710,45 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+        {/* Date range filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>Period:</span>
+          <button
+            onClick={() => { setViewFrom(periodStart); setViewTo(periodEnd) }}
+            className="btn btn-ghost"
+            style={{ fontSize: 12, padding: '3px 10px', fontWeight: isCurrentPeriod ? 700 : 400, borderColor: isCurrentPeriod ? 'var(--accent)' : undefined, color: isCurrentPeriod ? 'var(--accent)' : undefined }}
+          >
+            Current ({periodStart.slice(5)} → {periodEnd.slice(5)})
+          </button>
+          {prevPeriodStart && prevPeriodEnd && (
+            <button
+              onClick={() => { setViewFrom(prevPeriodStart); setViewTo(prevPeriodEnd) }}
+              className="btn btn-ghost"
+              style={{ fontSize: 12, padding: '3px 10px', fontWeight: isPrevPeriod ? 700 : 400, borderColor: isPrevPeriod ? 'var(--accent)' : undefined, color: isPrevPeriod ? 'var(--accent)' : undefined }}
+            >
+              Previous ({prevPeriodStart.slice(5)} → {prevPeriodEnd.slice(5)})
+            </button>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <input
+              type="date"
+              value={viewFrom}
+              onChange={e => setViewFrom(e.target.value)}
+              className="field-input"
+              style={{ marginBottom: 0, fontSize: 12, padding: '3px 8px', width: 130 }}
+            />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>→</span>
+            <input
+              type="date"
+              value={viewTo}
+              onChange={e => setViewTo(e.target.value)}
+              className="field-input"
+              style={{ marginBottom: 0, fontSize: 12, padding: '3px 8px', width: 130 }}
+            />
+          </div>
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           <div className="stat-card"><div className="stat-label">Total Hours</div><div className="stat-value" style={{ fontSize: 22 }}>{fmtH(Math.round(grandTotal * 10) / 10)}</div></div>
           <div className="stat-card"><div className="stat-label">OT Hours</div><div className="stat-value" style={{ fontSize: 22, color: grandOT > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>{fmtH(Math.round(grandOT * 10) / 10)}</div></div>
@@ -908,7 +957,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
 
     else if (tab === 'monthly') {
       const rows: (string | number)[][] = [
-        ['Employee', 'Days Present', 'Business Days', 'Attendance %', 'Total Hours', 'Regular Hours', 'OT Hours', 'Period'],
+        ['Employee', 'Days Present', 'Business Days', 'Attendance %', 'Total Hours', 'Regular Hours', 'Approved OT Hrs', 'Paid PTO Days', 'Unpaid PTO Days', 'Period'],
       ]
       for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
         const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
@@ -917,12 +966,14 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
           const h = e ? entryHours(e, nowMsSnap) : null
           return s + (h != null ? Math.min(8, h) : 0)
         }, 0)
-        const totalOT = Math.max(0, total - regularHrs)
         const daysPresent = empEntries.filter(e => e?.clock_in).length
         const attendance = periodBizDays > 0 ? Math.round((daysPresent / periodBizDays) * 100) : 0
-        rows.push([emp.name, daysPresent, periodBizDays, `${attendance}%`, fmtDecimal(Math.round(total * 100) / 100), fmtDecimal(Math.round(regularHrs * 100) / 100), totalOT > 0 ? fmtDecimal(Math.round(totalOT * 100) / 100) : 0, `${periodStart} to ${periodEnd}`])
+        const approvedOt = Math.round((approvedOtMap[emp.id] ?? 0) * 100) / 100
+        const paidPto = ptoPaidMap[emp.id] ?? 0
+        const unpaidPto = ptoUnpaidMap[emp.id] ?? 0
+        rows.push([emp.name, daysPresent, periodBizDays, `${attendance}%`, fmtDecimal(Math.round(total * 100) / 100), fmtDecimal(Math.round(regularHrs * 100) / 100), approvedOt > 0 ? fmtDecimal(approvedOt) : 0, paidPto, unpaidPto, `${viewFrom} to ${viewTo}`])
       }
-      downloadCSV(`Team-Time-Period-${periodStart}_to_${periodEnd}.csv`, rows)
+      downloadCSV(`Team-Time-Period-${viewFrom}_to_${viewTo}.csv`, rows)
     }
   }
 
@@ -957,15 +1008,24 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
       )}
 
       {monthEntriesEmp && (() => {
+        const empLeaves = allLeaveRequests.filter(lr => lr.employee_id === monthEntriesEmp.id)
+        // Build leave coverage map for this employee in the view period
+        const paidPtoDateSet = new Set<string>()
+        for (const lr of empLeaves) {
+          if (lr.status === 'approved' && lr.leave_type !== 'unpaid') {
+            const days = genDays(lr.start_date > viewFrom ? lr.start_date : viewFrom, lr.end_date < viewTo ? lr.end_date : viewTo)
+            days.forEach(d => paidPtoDateSet.add(d))
+          }
+        }
         const empEntries = periodDays
           .map(d => byEmpDate[monthEntriesEmp.id]?.[d])
           .filter((e): e is TimeEntry => !!e)
         return (
           <div className="modal-overlay">
-            <div className="modal" style={{ maxWidth: 560 }}>
-              <div className="modal-title">{monthEntriesEmp.name} — This Pay Period</div>
-              <div className="modal-sub">Click Edit on any entry to modify it.</div>
-              <div style={{ maxHeight: 400, overflowY: 'auto' }}>
+            <div className="modal" style={{ maxWidth: 580 }}>
+              <div className="modal-title">{monthEntriesEmp.name}</div>
+              <div className="modal-sub">{viewFrom} → {viewTo} · Click Edit on any entry to modify it.</div>
+              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                 <table className="data-table" style={{ width: '100%' }}>
                   <thead>
                     <tr>
@@ -973,34 +1033,48 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                       <th>Clock In</th>
                       <th>Clock Out</th>
                       <th>Hours</th>
+                      <th>Missing</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
                     {empEntries.length === 0
-                      ? <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>No entries this month.</td></tr>
-                      : empEntries.map(e => (
-                        <tr key={e.id}>
-                          <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
-                          <td style={{ fontSize: 12.5 }}>{e.clock_in ? laTime(e.clock_in) : '—'}</td>
-                          <td style={{ fontSize: 12.5 }}>{e.clock_out ? laTime(e.clock_out) : '—'}</td>
-                          <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtH(e.total_hours)}</td>
-                          <td>
-                            <button
-                              onClick={() => { setEditingEntry(e); setMonthEntriesEmp(null) }}
-                              style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
-                            >
-                              Edit
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+                      ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>No entries this period.</td></tr>
+                      : empEntries.map(e => {
+                        const cappedH = Math.min(e.total_hours ?? 0, 8)
+                        const hasPaidPto = paidPtoDateSet.has(e.date)
+                        const missing = hasPaidPto ? 0 : Math.max(0, 8 - cappedH)
+                        return (
+                          <tr key={e.id}>
+                            <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
+                            <td style={{ fontSize: 12.5 }}>{e.clock_in ? laTime(e.clock_in) : '—'}</td>
+                            <td style={{ fontSize: 12.5 }}>{e.clock_out ? laTime(e.clock_out) : '—'}</td>
+                            <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtH(e.total_hours)}</td>
+                            <td style={{ fontVariantNumeric: 'tabular-nums', color: missing > 0 ? 'var(--red)' : 'var(--text-muted)', fontWeight: missing > 0 ? 600 : 400, fontSize: 12.5 }}>
+                              {missing > 0 ? fmtH(missing) : '—'}
+                            </td>
+                            <td>
+                              <button
+                                onClick={() => { setEditingEntry(e); setMonthEntriesEmp(null) }}
+                                style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                              >
+                                Edit
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
                     }
                   </tbody>
                 </table>
               </div>
-              <div style={{ marginTop: 20 }}>
-                <button onClick={() => setMonthEntriesEmp(null)} className="btn btn-ghost" style={{ width: '100%' }}>Close</button>
+              <div style={{ marginTop: 20, display: 'flex', gap: 10 }}>
+                <button onClick={() => setMonthEntriesEmp(null)} className="btn btn-ghost" style={{ flex: 1 }}>Close</button>
+                <Link href={`/dashboard/admin/employees/${monthEntriesEmp.id}/missing-hours?periodStart=${viewFrom}&periodEnd=${viewTo}`} style={{ flex: 1, textDecoration: 'none' }}>
+                  <button className="btn btn-ghost" style={{ width: '100%', fontSize: 12.5 }} onClick={() => setMonthEntriesEmp(null)}>
+                    Missing Hours Breakdown →
+                  </button>
+                </Link>
               </div>
             </div>
           </div>

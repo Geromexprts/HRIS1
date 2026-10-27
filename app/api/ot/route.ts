@@ -72,6 +72,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'OT start time cannot be before 8:00 AM — early clock-in hours do not count toward overtime' }, { status: 400 })
   }
 
+  // Past-date OT requires admin unlock
+  const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: LA_TZ }).format(new Date())
+  if (date < todayLA) {
+    const { data: unlock } = await supabaseAdmin
+      .from('ot_date_unlocks')
+      .select('id')
+      .eq('employee_id', session.user.id)
+      .eq('date', date)
+      .maybeSingle()
+
+    if (!unlock) {
+      return NextResponse.json(
+        { error: 'OT for past dates must be unlocked by an admin. Please contact your manager.' },
+        { status: 403 }
+      )
+    }
+  }
+
   const { data, error } = await supabaseAdmin
     .from('ot_requests')
     .insert({
@@ -107,7 +125,7 @@ export async function DELETE(req: Request) {
 
   if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   if (existing.employee_id !== session.user.id) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  if (existing.status !== 'denied') return NextResponse.json({ error: 'Only denied requests can be cancelled' }, { status: 400 })
+  if (!['denied', 'pending'].includes(existing.status)) return NextResponse.json({ error: 'Only pending or denied requests can be cancelled' }, { status: 400 })
 
   const { error } = await supabaseAdmin.from('ot_requests').delete().eq('id', requestId)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
