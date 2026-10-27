@@ -114,24 +114,45 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
 
 function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) {
   const [step, setStep] = useState<'ask' | 'form' | 'done'>('ask')
-  const [otHours, setOtHours] = useState('')
+  const [otStartTime, setOtStartTime] = useState('')
+  const [otEndTime, setOtEndTime] = useState('')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [submittedHours, setSubmittedHours] = useState('')
 
+  function initFormTimes() {
+    // Pre-fill end time with clock-out, start time 1h before
+    const clockOutLA = utcToLAInput(entry.clock_out)
+    setOtEndTime(clockOutLA ? clockOutLA.split('T')[1] : '')
+    if (clockOutLA) {
+      const [h, m] = clockOutLA.split('T')[1].split(':').map(Number)
+      const startH = h - 1
+      if (startH >= 0) {
+        setOtStartTime(`${String(startH).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+      } else {
+        setOtStartTime('')
+      }
+    }
+  }
+
   async function submit() {
-    const hrs = parseFloat(otHours)
-    if (!otHours || isNaN(hrs) || hrs <= 0) { setError('Enter a valid number of OT hours.'); return }
+    if (!otStartTime || !otEndTime) { setError('Both start and end times are required.'); return }
+    // Build ISO timestamps using the entry's date
+    const toISO = (timeStr: string) => laInputToUTC(`${entry.date}T${timeStr}`)
+    const startISO = toISO(otStartTime)
+    const endISO = toISO(otEndTime)
+    if (new Date(endISO) <= new Date(startISO)) { setError('End time must be after start time.'); return }
+    const hrs = Math.round(((new Date(endISO).getTime() - new Date(startISO).getTime()) / 3600000) * 100) / 100
     setSaving(true); setError('')
     const res = await fetch('/api/ot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: entry.date, ot_hours: hrs, reason: reason || null, time_entry_id: entry.id }),
+      body: JSON.stringify({ date: entry.date, ot_start_time: startISO, ot_end_time: endISO, reason: reason || null, time_entry_id: entry.id }),
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed to submit.'); setSaving(false); return }
-    setSubmittedHours(otHours)
+    setSubmittedHours(String(hrs))
     setStep('done')
   }
 
@@ -159,7 +180,7 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
             {toDate(entry.date)} · {entry.total_hours}h logged
           </div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => setStep('form')} className="btn btn-primary" style={{ flex: 1 }}>
+            <button onClick={() => { initFormTimes(); setStep('form') }} className="btn btn-primary" style={{ flex: 1 }}>
               Yes, add OT request
             </button>
             <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>No, skip</button>
@@ -169,27 +190,46 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
     )
   }
 
+  const clockInDisplay = entry.clock_in ? toTime(entry.clock_in) : '—'
+  const clockOutDisplay = entry.clock_out ? toTime(entry.clock_out) : '—'
+
   return (
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-title">Overtime Request</div>
         <div className="modal-sub">{toDate(entry.date)} · {entry.total_hours}h logged today</div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 16 }}>
-          <div>
-            <label className="field-label">OT Hours</label>
-            <input
-              type="number"
-              min="0.25"
-              max="16"
-              step="0.25"
-              value={otHours}
-              onChange={e => setOtHours(e.target.value)}
-              placeholder="e.g. 1.5"
-              className="field-input"
-              autoFocus
-            />
+        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <div><span style={{ color: 'var(--text-muted)' }}>Clocked In: </span><strong>{clockInDisplay}</strong></div>
+          <div><span style={{ color: 'var(--text-muted)' }}>Clocked Out: </span><strong>{clockOutDisplay}</strong></div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="field-label">OT Start Time</label>
+              <input
+                type="time"
+                value={otStartTime}
+                onChange={e => setOtStartTime(e.target.value)}
+                className="field-input"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="field-label">OT End Time</label>
+              <input
+                type="time"
+                value={otEndTime}
+                onChange={e => setOtEndTime(e.target.value)}
+                className="field-input"
+              />
+            </div>
           </div>
+          {otStartTime && otEndTime && (() => {
+            const hrs = Math.round(((new Date(`2000-01-01T${otEndTime}`).getTime() - new Date(`2000-01-01T${otStartTime}`).getTime()) / 3600000) * 100) / 100
+            return hrs > 0 ? <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Duration: <strong>{hrs}h</strong></p> : null
+          })()}
           <div>
             <label className="field-label">Reason <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
             <textarea
@@ -224,17 +264,24 @@ function getLAMinutes(): number {
   return h * 60 + m
 }
 
-export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockIn = false }: {
-  employeeId: string; todayEntry: TimeEntry | null; recentEntries: TimeEntry[]; earlyClockIn?: boolean
+type OtRequest = {
+  id: string; date: string; ot_hours: number; ot_start_time: string | null; ot_end_time: string | null
+  reason: string | null; status: string; created_at: string
+}
+
+export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockIn = false, otRequests: initialOtRequests = [] }: {
+  employeeId: string; todayEntry: TimeEntry | null; recentEntries: TimeEntry[]; earlyClockIn?: boolean; otRequests?: OtRequest[]
 }) {
   const [entry, setEntry] = useState<TimeEntry | null>(todayEntry)
   const [entries, setEntries] = useState<TimeEntry[]>(recentEntries)
+  const [otRequests, setOtRequests] = useState<OtRequest[]>(initialOtRequests)
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('00:00:00')
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [otEntry, setOtEntry] = useState<TimeEntry | null>(null)
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
+  const [cancellingOt, setCancellingOt] = useState<string | null>(null)
 
   const status = getStatus(entry)
   const [, setTick] = useState(0)
@@ -281,6 +328,19 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
     if (updated.date === new Date().toISOString().split('T')[0]) setEntry(updated)
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
     setEditingEntry(null)
+  }
+
+  async function cancelOtRequest(requestId: string) {
+    setCancellingOt(requestId)
+    const res = await fetch('/api/ot', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId }),
+    })
+    if (res.ok) {
+      setOtRequests(prev => prev.filter(r => r.id !== requestId))
+    }
+    setCancellingOt(null)
   }
 
   const filteredEntries = entries.filter(e => {
@@ -346,6 +406,57 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
           </p>
         )}
       </div>
+
+      {/* OT Requests */}
+      {otRequests.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Overtime Requests</div>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>OT Start</th>
+                  <th>OT End</th>
+                  <th>Hours</th>
+                  <th>Status</th>
+                  <th>Reason</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {otRequests.map(r => (
+                  <tr key={r.id}>
+                    <td style={{ fontSize: 12.5 }}>{toDate(r.date)}</td>
+                    <td style={{ fontSize: 12.5 }}>{r.ot_start_time ? toTime(r.ot_start_time) : '—'}</td>
+                    <td style={{ fontSize: 12.5 }}>{r.ot_end_time ? toTime(r.ot_end_time) : '—'}</td>
+                    <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.ot_hours}h</td>
+                    <td>
+                      <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'denied' ? 'badge-red' : 'badge-amber'}`}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{r.reason ?? '—'}</td>
+                    <td>
+                      {r.status === 'denied' && (
+                        <button
+                          onClick={() => cancelOtRequest(r.id)}
+                          disabled={cancellingOt === r.id}
+                          style={{ fontSize: 11, color: 'var(--red)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                        >
+                          {cancellingOt === r.id ? 'Cancelling…' : 'Cancel & Resubmit'}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* All time entries */}
       {entries.length > 0 && (

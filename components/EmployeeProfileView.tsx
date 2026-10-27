@@ -10,8 +10,10 @@ const STANDARD_MONTHLY_HOURS = 173.33
 type Emp = {
   id: string; name: string; work_email: string; employee_code: string | null
   role: string; status: string; employment_type: string | null
-  employment_start_date: string | null; office_location: string | null
-  monthly_salary: number | null; shift_schedule: string | null
+  employment_start_date: string | null; employment_end_date: string | null
+  office_location: string | null
+  monthly_salary: number | null; hourly_rate: number | null
+  shift_schedule: string | null
   payslip_delivery: string | null
   date_of_birth: string | null
   home_address: string | null
@@ -217,8 +219,12 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const regularHours = totalHours - otHours
   const daysPresent = entries.filter(e => e.clock_in).length
   const dailyRate = emp.monthly_salary ? (emp.monthly_salary / STANDARD_MONTHLY_HOURS) * 8 : null
-  const hourlyRate = emp.monthly_salary ? emp.monthly_salary / STANDARD_MONTHLY_HOURS : null
-  const netPay = deductionRow?.net_pay ?? emp.monthly_salary
+  const isHourly = emp.employment_type === 'hourly'
+  const effectiveHourlyRate = emp.hourly_rate ?? (emp.monthly_salary ? emp.monthly_salary / STANDARD_MONTHLY_HOURS : null)
+  const hourlyRate = effectiveHourlyRate
+  const netPay = isHourly && emp.hourly_rate
+    ? Math.round(totalHours * emp.hourly_rate * 100) / 100
+    : deductionRow?.net_pay ?? emp.monthly_salary
   const pendingLeave = leaveRequests.filter(r => r.status === 'pending')
   const approvedLeave = leaveRequests.filter(r => r.status === 'approved')
 
@@ -299,6 +305,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   { label: 'Type', value: emp.employment_type ?? 'full-time' },
                   { label: 'Status', value: emp.status },
                   { label: 'Start Date', value: emp.employment_start_date ? fmtDate(emp.employment_start_date) : '—' },
+                  { label: 'End Date', value: emp.employment_end_date ? fmtDate(emp.employment_end_date) : '—' },
                   { label: 'Tenure', value: emp.employment_start_date ? tenure(emp.employment_start_date) : '—' },
                   { label: 'Manager', value: managerName ?? '—' },
                   { label: 'Approver', value: approverName ?? '—' },
@@ -415,14 +422,14 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <div className="card-title" style={{ marginBottom: 14 }}>Payroll — Current Period</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16, fontSize: 13 }}>
               {[
-                { label: 'Monthly Salary', value: fmtMoney(emp.monthly_salary) },
-                { label: 'Daily Rate', value: dailyRate != null ? `$${dailyRate.toFixed(2)}` : '—' },
-                { label: 'Hourly Rate', value: hourlyRate != null ? `$${hourlyRate.toFixed(2)}` : '—' },
-                { label: 'PTO Used', value: deductionRow?.pto_days_used != null ? `${deductionRow.pto_days_used} days` : '—' },
+                { label: 'Monthly Salary', value: isHourly ? '— (hourly)' : fmtMoney(emp.monthly_salary) },
+                { label: 'Daily Rate', value: isHourly ? '— (hourly)' : (dailyRate != null ? `$${dailyRate.toFixed(2)}` : '—') },
+                { label: 'Hourly Rate', value: emp.hourly_rate != null ? `$${emp.hourly_rate.toFixed(2)} (set)` : (hourlyRate != null ? `$${hourlyRate.toFixed(2)} (derived)` : '—') },
+                { label: 'Total Hours', value: fmtH(Math.round(totalHours * 10) / 10) },
                 { label: 'Regular Hours', value: fmtH(Math.round(regularHours * 10) / 10) },
                 { label: 'OT Hours', value: fmtH(Math.round(otHours * 10) / 10) },
-                { label: 'Pay Deduction', value: deductionRow?.shortfall_deduction ? `-$${deductionRow.shortfall_deduction.toFixed(2)}` : '—' },
-                { label: 'Net Pay', value: netPay != null ? fmtMoney(netPay) : '—' },
+                { label: 'PTO Used', value: deductionRow?.pto_days_used != null ? `${deductionRow.pto_days_used} days` : '—' },
+                { label: isHourly ? 'Est. Gross' : 'Net Pay', value: netPay != null ? fmtMoney(netPay) : '—' },
               ].map(row => (
                 <div key={row.label}>
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>{row.label}</div>

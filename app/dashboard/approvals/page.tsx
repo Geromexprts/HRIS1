@@ -22,7 +22,7 @@ export default async function ApprovalsPage() {
 
   let otQuery = supabaseAdmin
     .from('ot_requests')
-    .select('*, employees(id, name, work_email)')
+    .select('*, employees(id, name, work_email), time_entries!time_entry_id(clock_in, clock_out, date)')
     .order('created_at', { ascending: false })
 
   if (session.user.role === 'approver') {

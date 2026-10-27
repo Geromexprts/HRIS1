@@ -24,6 +24,8 @@ type OtRequest = {
   employee_id: string
   date: string
   ot_hours: number
+  ot_start_time: string | null
+  ot_end_time: string | null
   reason: string | null
   status: string
   reviewed_by: string | null
@@ -31,6 +33,7 @@ type OtRequest = {
   approver_note: string | null
   created_at: string
   employees?: { id: string; name: string; work_email: string } | null
+  time_entries?: { clock_in: string | null; clock_out: string | null; date: string } | null
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -196,6 +199,15 @@ function OtActionModal({ request, employeeName, onClose, onDone }: {
     onDone(data)
   }
 
+  const LA_TZ = 'America/Los_Angeles'
+  function fmtLATime(iso: string | null) {
+    if (!iso) return '—'
+    return new Date(iso).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: LA_TZ })
+  }
+  function fmtDateTime(iso: string) {
+    return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true, timeZone: LA_TZ })
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -203,8 +215,25 @@ function OtActionModal({ request, employeeName, onClose, onDone }: {
         <div className="modal-sub">{employeeName} · {request.ot_hours}h overtime · {fmt(request.date)}</div>
 
         <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '12px 16px', marginBottom: 18, fontSize: 13 }}>
-          <div><span style={{ color: 'var(--text-muted)' }}>Date: </span><strong>{fmt(request.date)}</strong></div>
-          <div style={{ marginTop: 6 }}><span style={{ color: 'var(--text-muted)' }}>OT Hours: </span><strong>{request.ot_hours}h</strong></div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div><span style={{ color: 'var(--text-muted)' }}>Date: </span><strong>{fmt(request.date)}</strong></div>
+            <div><span style={{ color: 'var(--text-muted)' }}>OT Hours: </span><strong>{request.ot_hours}h</strong></div>
+            {request.ot_start_time && (
+              <div><span style={{ color: 'var(--text-muted)' }}>OT Start: </span><strong>{fmtLATime(request.ot_start_time)}</strong></div>
+            )}
+            {request.ot_end_time && (
+              <div><span style={{ color: 'var(--text-muted)' }}>OT End: </span><strong>{fmtLATime(request.ot_end_time)}</strong></div>
+            )}
+          </div>
+          {request.time_entries && (
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <div><span style={{ color: 'var(--text-muted)' }}>Clocked In: </span><strong>{fmtLATime(request.time_entries.clock_in)}</strong></div>
+              <div><span style={{ color: 'var(--text-muted)' }}>Clocked Out: </span><strong>{fmtLATime(request.time_entries.clock_out)}</strong></div>
+            </div>
+          )}
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+            <span style={{ color: 'var(--text-muted)' }}>Submitted: </span><strong>{fmtDateTime(request.created_at)}</strong>
+          </div>
           {request.reason && (
             <div style={{ marginTop: 8, color: 'var(--text-secondary)' }}>
               <span style={{ color: 'var(--text-muted)' }}>Reason: </span>{request.reason}

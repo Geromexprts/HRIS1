@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 const LA_TZ = 'America/Los_Angeles'
 
@@ -299,7 +300,7 @@ function StatusBadge({ entry, today, nowMs }: { entry?: TimeEntry; today: string
 
 // ── AdminTimeView ─────────────────────────────────────────────────────────────
 
-export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd }: {
+export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd, approvedOtMap = {}, ptoPaidMap = {}, ptoUnpaidMap = {} }: {
   employees: Employee[]
   entries: TimeEntry[]
   edits: AuditEntry[]
@@ -308,6 +309,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   weekStart: string
   periodStart: string
   periodEnd: string
+  approvedOtMap?: Record<string, number>
+  ptoPaidMap?: Record<string, number>
+  ptoUnpaidMap?: Record<string, number>
 }) {
   const router = useRouter()
   const [tab, setTab] = useState<'today' | 'yesterday' | 'weekly' | 'monthly' | 'edits'>('today')
@@ -419,7 +423,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                   const isActive = entry?.clock_in && !entry.clock_out
                   return (
                     <tr key={emp.id}>
-                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
+                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <Link href={`/dashboard/admin/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>{emp.name}</Link>
+                      </td>
                       <td><StatusBadge entry={entry ?? undefined} today={today} nowMs={nowMs} /></td>
                       <td style={{ fontSize: 12.5, color: late ? 'var(--amber)' : 'var(--text-primary)' }}>
                         {entry?.clock_in ? laTime(entry.clock_in) : '—'}
@@ -532,7 +538,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
               <tbody>
                 {(empFilter === 'all' ? rows : rows.filter(r => r.emp.id === empFilter)).map(({ emp, entry, h, ot, bm, status }) => (
                   <tr key={emp.id}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <Link href={`/dashboard/admin/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>{emp.name}</Link>
+                    </td>
                     <td style={{ fontSize: 12.5 }}>{entry?.clock_in ? laTime(entry.clock_in) : '—'}</td>
                     <td style={{ fontSize: 12.5 }}>{entry?.clock_out ? laTime(entry.clock_out) : '—'}</td>
                     <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{bm > 0 ? `${bm}m` : '—'}</td>
@@ -619,7 +627,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
               <tbody>
                 {(empFilter === 'all' ? rows : rows.filter(r => r.emp.id === empFilter)).map(({ emp, dayHours, total, totalOT }) => (
                   <tr key={emp.id}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <Link href={`/dashboard/admin/employees/${emp.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>{emp.name}</Link>
+                    </td>
                     {dayHours.map((h, i) => {
                       const dayEntry = byEmpDate[emp.id]?.[weekDays[i]]
                       return (
@@ -708,31 +718,46 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                   <th>Attendance</th>
                   <th>Total Hours</th>
                   <th>Regular</th>
-                  <th>OT Hours</th>
+                  <th>Approved OT</th>
+                  <th>Paid PTO</th>
+                  <th>Unpaid PTO</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {(empFilter === 'all' ? rows : rows.filter(r => r.emp.id === empFilter)).map(({ emp, total, regularHrs, totalOT, daysPresent, attendance }) => (
-                  <tr key={emp.id}>
-                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{emp.name}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
-                    <td>
-                      <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                        {attendance}%
-                      </span>
-                    </td>
-                    <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtH(Math.round(total * 10) / 10)}</td>
-                    <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmtH(Math.round(regularHrs * 10) / 10)}</td>
-                    <td style={{ color: totalOT > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: totalOT > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
-                      {totalOT > 0 ? `+${fmtH(Math.round(totalOT * 10) / 10)}` : '—'}
-                    </td>
-                    <td>
-                      <button onClick={() => setMonthEntriesEmp(emp)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Entries</button>
-                    </td>
-                  </tr>
-                ))}
+                {(empFilter === 'all' ? rows : rows.filter(r => r.emp.id === empFilter)).map(({ emp, total, regularHrs, daysPresent, attendance }) => {
+                  const approvedOt = Math.round((approvedOtMap[emp.id] ?? 0) * 10) / 10
+                  const paidPto = ptoPaidMap[emp.id] ?? 0
+                  const unpaidPto = ptoUnpaidMap[emp.id] ?? 0
+                  return (
+                    <tr key={emp.id}>
+                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                        <Link href={`/dashboard/admin/employees/${emp.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>{emp.name}</Link>
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
+                      <td>
+                        <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                          {attendance}%
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtH(Math.round(total * 10) / 10)}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmtH(Math.round(regularHrs * 10) / 10)}</td>
+                      <td style={{ color: approvedOt > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: approvedOt > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
+                        {approvedOt > 0 ? `+${fmtH(approvedOt)}` : '—'}
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: paidPto > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {paidPto > 0 ? `${paidPto}d` : '—'}
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: unpaidPto > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: unpaidPto > 0 ? 600 : 400 }}>
+                        {unpaidPto > 0 ? `${unpaidPto}d` : '—'}
+                      </td>
+                      <td>
+                        <button onClick={() => setMonthEntriesEmp(emp)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Entries</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
