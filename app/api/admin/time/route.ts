@@ -3,6 +3,27 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// GET /api/admin/time?employee_id=&from=&to= — fetch time entries + leave for a specific period
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (session.user.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const employee_id = req.nextUrl.searchParams.get('employee_id')
+  const from = req.nextUrl.searchParams.get('from')
+  const to = req.nextUrl.searchParams.get('to')
+  if (!employee_id || !from || !to) return NextResponse.json({ error: 'employee_id, from, to required' }, { status: 400 })
+
+  const [{ data: entries }, { data: leaves }, { data: otRows }] = await Promise.all([
+    supabaseAdmin.from('time_entries').select('*').eq('employee_id', employee_id).gte('date', from).lte('date', to).order('date', { ascending: false }),
+    supabaseAdmin.from('leave_requests').select('id, leave_type, start_date, end_date, days_requested, status, created_at, reason, is_half_day, approver_note, reviewed_by').eq('employee_id', employee_id).lte('start_date', to).gte('end_date', from),
+    supabaseAdmin.from('ot_requests').select('ot_hours').eq('employee_id', employee_id).eq('status', 'approved').gte('date', from).lte('date', to),
+  ])
+
+  const approvedOtHours = Math.round((otRows ?? []).reduce((s, r) => s + (r.ot_hours ?? 0), 0) * 100) / 100
+  return NextResponse.json({ entries: entries ?? [], leaveRequests: leaves ?? [], approvedOtHours })
+}
+
 function calcTotalHours(clockIn: string, clockOut: string, skipBreak = false) {
   const totalMs = new Date(clockOut).getTime() - new Date(clockIn).getTime()
   return Math.max(0, Math.round((totalMs / 3600000 - (skipBreak ? 0 : 1)) * 100) / 100)

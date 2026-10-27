@@ -25,6 +25,15 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
   const today = laToday()
   const { periodStart, periodEnd } = laPeriodBounds()
 
+  // Previous pay period (26th of 2 months ago → 25th of last month)
+  const [py, pm] = periodStart.split('-').map(Number)
+  const prevM = pm - 1 <= 0 ? 12 : pm - 1
+  const prevY = pm - 1 <= 0 ? py - 1 : py
+  const prevPrevM = prevM - 1 <= 0 ? 12 : prevM - 1
+  const prevPrevY = prevM - 1 <= 0 ? prevY - 1 : prevY
+  const prevPeriodStart = `${prevPrevY}-${String(prevPrevM).padStart(2, '0')}-26`
+  const prevPeriodEnd = `${prevY}-${String(prevM).padStart(2, '0')}-25`
+
   const [
     { data: emp },
     { data: pto },
@@ -118,6 +127,8 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
         payslipHistory={payslipHistory ?? []}
         periodStart={periodStart}
         periodEnd={periodEnd}
+        prevPeriodStart={prevPeriodStart}
+        prevPeriodEnd={prevPeriodEnd}
       />
     </div>
   )

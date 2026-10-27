@@ -95,7 +95,7 @@ function laInputToUTC(localStr: string): string {
   return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
 }
 
-export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, approvedOtHours = 0 }: {
+export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0 }: {
   emp: Emp
   managerName: string | null
   approverName: string | null
@@ -107,6 +107,8 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   payslipHistory: PayslipRow[]
   periodStart: string
   periodEnd: string
+  prevPeriodStart?: string
+  prevPeriodEnd?: string
   approvedOtHours?: number
 }) {
   const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
@@ -128,6 +130,13 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [otUnlockSaving, setOtUnlockSaving] = useState(false)
   const [otUnlockError, setOtUnlockError] = useState('')
   const [entries, setEntries] = useState<TimeEntry[]>(timeEntries)
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(initialLeaveRequests)
+  const [viewPeriodStart, setViewPeriodStart] = useState(periodStart)
+  const [viewPeriodEnd, setViewPeriodEnd] = useState(periodEnd)
+  const [periodLoading, setPeriodLoading] = useState(false)
+  const [customFrom, setCustomFrom] = useState('')
+  const [customTo, setCustomTo] = useState('')
+  const [viewApprovedOtHours, setViewApprovedOtHours] = useState(approvedOtHours)
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editClockIn, setEditClockIn] = useState('')
   const [editClockOut, setEditClockOut] = useState('')
@@ -201,6 +210,23 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       body: JSON.stringify({ employee_id: emp.id, date }),
     })
     setOtUnlocks(prev => prev.filter(u => u.date !== date))
+  }
+
+  async function fetchPeriod(from: string, to: string) {
+    if (!from || !to) return
+    setPeriodLoading(true)
+    try {
+      const res = await fetch(`/api/admin/time?employee_id=${emp.id}&from=${from}&to=${to}`)
+      if (res.ok) {
+        const d = await res.json()
+        setEntries(d.entries ?? [])
+        setLeaveRequests(d.leaveRequests ?? [])
+        setViewApprovedOtHours(d.approvedOtHours ?? 0)
+        setViewPeriodStart(from)
+        setViewPeriodEnd(to)
+      }
+    } catch { /* keep existing data */ }
+    setPeriodLoading(false)
   }
 
   function openAddModal() {
@@ -286,7 +312,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   }
 
   const totalHours = entries.reduce((s, e) => s + (e.total_hours ?? 0), 0)
-  const otHours = approvedOtHours
+  const otHours = viewApprovedOtHours
   const regularHours = totalHours - otHours
   const daysPresent = entries.filter(e => e.clock_in).length
   const dailyRate = emp.monthly_salary ? (emp.monthly_salary / STANDARD_MONTHLY_HOURS) * 8 : null
@@ -618,15 +644,33 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       {/* ── Time Log ── */}
       {tab === 'time' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="card-title" style={{ marginBottom: 0 }}>Time Log</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                {periodStart} → {periodEnd} · {daysPresent} days · {fmtH(Math.round(totalHours * 10) / 10)} total
-              </div>
+          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>Time Log</div>
               <button onClick={openAddModal} style={{ fontSize: 12, padding: '5px 12px', borderRadius: 6, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 + Add Entry
               </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => fetchPeriod(periodStart, periodEnd)}
+                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: viewPeriodStart === periodStart && viewPeriodEnd === periodEnd ? 'var(--accent)' : 'var(--surface)', color: viewPeriodStart === periodStart && viewPeriodEnd === periodEnd ? '#fff' : 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}
+              >Current</button>
+              {prevPeriodStart && (
+                <button
+                  onClick={() => fetchPeriod(prevPeriodStart, prevPeriodEnd!)}
+                  style={{ fontSize: 12, padding: '4px 10px', borderRadius: 5, border: '1px solid var(--border)', background: viewPeriodStart === prevPeriodStart ? 'var(--accent)' : 'var(--surface)', color: viewPeriodStart === prevPeriodStart ? '#fff' : 'var(--text-primary)', cursor: 'pointer', fontWeight: 500 }}
+                >Previous</button>
+              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ fontSize: 11, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>→</span>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ fontSize: 11, padding: '3px 6px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }} />
+                <button onClick={() => fetchPeriod(customFrom, customTo)} disabled={!customFrom || !customTo} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', opacity: !customFrom || !customTo ? 0.5 : 1 }}>Go</button>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 4 }}>
+                {periodLoading ? 'Loading…' : `${viewPeriodStart} → ${viewPeriodEnd} · ${daysPresent} days · ${fmtH(Math.round(totalHours * 10) / 10)}`}
+              </span>
             </div>
           </div>
           <div className="table-wrap">
