@@ -34,9 +34,10 @@ function breakMins(breaks: { start: string; end: string | null }[]): number {
   }, 0)
 }
 
-function entryHours(e: TimeEntry, nowMs: number): number | null {
+function entryHours(e: TimeEntry, nowMs: number, today: string = ''): number | null {
   if (e.total_hours != null) return e.total_hours
-  if (e.clock_in && !e.clock_out) {
+  // Only live-calculate for today's open entry — past open entries have no clock-out and should show null
+  if (e.clock_in && !e.clock_out && e.date === today) {
     const rawHrs = (nowMs - new Date(e.clock_in).getTime()) / 3600000
     return Math.max(0, Math.round((rawHrs - 1) * 10) / 10)
   }
@@ -292,7 +293,7 @@ function StatusBadge({ entry, today, nowMs }: { entry?: TimeEntry; today: string
   if (!entry) return <span className="badge badge-gray">Not Started</span>
   if (onBreak(entry)) return <span className="badge badge-blue">On Break</span>
   if (!entry.clock_out) {
-    const h = entryHours(entry, nowMs)
+    const h = entryHours(entry, nowMs, today)
     return <span className="badge badge-green">{h != null ? `${fmtH(h)}` : 'Clocked In'}</span>
   }
   return <span className="badge badge-gray">Clocked Out</span>
