@@ -41,17 +41,23 @@ export const COUNTRIES = [
 ]
 
 export const LEAVE_TYPES = [
-  { value: 'pto',       label: 'PTO (Paid Time Off)' },
-  { value: 'sick',      label: 'Sick Leave' },
-  { value: 'unpaid',   label: 'Unpaid Leave' },
-  { value: 'holiday',  label: 'Holiday Adjustment' },
-  { value: 'emergency',label: 'Emergency Leave' },
+  { value: 'pto',    label: 'Paid' },
+  { value: 'unpaid', label: 'Unpaid TO' },
 ] as const
 
 export type LeaveTypeValue = typeof LEAVE_TYPES[number]['value']
 
+// Display labels for all leave types including historical values
+const LEAVE_LABELS: Record<string, string> = {
+  pto:       'Paid',
+  unpaid:    'Unpaid TO',
+  sick:      'Sick Leave',
+  holiday:   'Holiday Adjustment',
+  emergency: 'Emergency Leave',
+}
+
 export function leaveTypeLabel(v: string): string {
-  return LEAVE_TYPES.find(t => t.value === v)?.label.replace(' (Paid Time Off)', '') ?? v
+  return LEAVE_LABELS[v] ?? v
 }
 
 export const EMPLOYMENT_TYPES = ['full-time', 'part-time', 'contractor', 'probationary']

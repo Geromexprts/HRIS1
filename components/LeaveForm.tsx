@@ -82,7 +82,7 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
   const [requests, setRequests] = useState(initialRequests)
   const [showForm, setShowForm] = useState(false)
   const [mode, setMode] = useState<'full' | 'half'>('full')
-  const [leaveType, setLeaveType] = useState<string>('pto')
+  const [leaveType, setLeaveType] = useState<string>(ptoBalance > 0 ? 'pto' : 'unpaid')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [singleDate, setSingleDate] = useState('')
@@ -206,9 +206,16 @@ export function LeaveForm({ initialRequests, ptoBalance }: {
             <label className="field-label">Leave Type</label>
             <select value={leaveType} onChange={e => setLeaveType(e.target.value)} className="field-input" style={{ maxWidth: 280 }}>
               {LEAVE_TYPES.map(t => (
-                <option key={t.value} value={t.value}>{t.label}</option>
+                <option key={t.value} value={t.value} disabled={t.value === 'pto' && ptoBalance === 0}>
+                  {t.label}{t.value === 'pto' && ptoBalance === 0 ? ' (Balance: 0)' : ''}
+                </option>
               ))}
             </select>
+            {ptoBalance === 0 && (
+              <p style={{ fontSize: 12, color: 'var(--amber)', marginTop: 4 }}>
+                No PTO balance — only Unpaid TO available.
+              </p>
+            )}
           </div>
 
           {/* Full Day / Half Day toggle */}

@@ -19,7 +19,7 @@ export async function PUT(req: NextRequest) {
   if (session.user.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { requestId, action, note } = await req.json()
-  if (!requestId || !action || !['approve', 'deny'].includes(action)) {
+  if (!requestId || !action || !['approve', 'deny', 'undo'].includes(action)) {
     return NextResponse.json({ error: 'Invalid request.' }, { status: 400 })
   }
 
@@ -30,6 +30,47 @@ export async function PUT(req: NextRequest) {
     .single()
 
   if (fetchErr || !leave) return NextResponse.json({ error: 'Leave request not found.' }, { status: 404 })
+
+  // ── Undo action ──
+  if (action === 'undo') {
+    if (leave.status !== 'approved') {
+      return NextResponse.json({ error: 'Only approved leaves can be undone.' }, { status: 409 })
+    }
+
+    const { data: reverted, error: revertErr } = await supabaseAdmin
+      .from('leave_requests')
+      .update({ status: 'pending', approver_note: null, reviewed_by: null, reviewed_at: null })
+      .eq('id', requestId)
+      .select()
+      .single()
+
+    if (revertErr) return NextResponse.json({ error: revertErr.message }, { status: 500 })
+
+    // Restore PTO balance for paid leaves
+    if (leave.leave_type === 'pto') {
+      const { data: pto } = await supabaseAdmin
+        .from('pto_balances')
+        .select('current_balance')
+        .eq('employee_id', leave.employee_id)
+        .single()
+
+      if (pto) {
+        await supabaseAdmin
+          .from('pto_balances')
+          .update({ current_balance: (pto.current_balance ?? 0) + (leave.days_requested ?? 0) })
+          .eq('employee_id', leave.employee_id)
+      }
+    }
+
+    await supabaseAdmin.from('audit_log').insert({
+      employee_id: leave.employee_id,
+      action: 'leave_undo',
+      details: { request_id: requestId, undone_by: session.user.email },
+    })
+
+    return NextResponse.json(reverted)
+  }
+
   if (leave.status !== 'pending') return NextResponse.json({ error: 'This request has already been reviewed.' }, { status: 409 })
 
   const newStatus = action === 'approve' ? 'approved' : 'denied'
@@ -48,8 +89,8 @@ export async function PUT(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ── Payroll deductions on approval ──
-  if (newStatus === 'approved') {
+  // ── Payroll deductions on approval (paid leaves only) ──
+  if (newStatus === 'approved' && leave.leave_type !== 'unpaid') {
     const { data: employee } = await supabaseAdmin
       .from('employees')
       .select('employment_start_date, monthly_salary')

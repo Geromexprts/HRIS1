@@ -43,9 +43,10 @@ const STANDARD_MONTHLY_HOURS = 173.33
 
 function computeNetPay(
   emp: Employee,
-  totalHours: number,
+  coveredHours: number,
   approvedOtHours: number,
-  unpaidPtoDays: number,
+  paidPtoDays: number,
+  workingDays: number,
   incentives: LocalIncentives,
 ): number | null {
   const incentivesTotal =
@@ -58,14 +59,15 @@ function computeNetPay(
   if (emp.employment_type === 'hourly') {
     const rate = emp.hourly_rate
     if (rate == null) return null
-    return Math.round(((totalHours + approvedOtHours) * rate + incentivesTotal) * 100) / 100
+    return Math.round(((coveredHours + approvedOtHours) * rate + incentivesTotal) * 100) / 100
   }
 
   const salary = emp.monthly_salary
   if (salary == null) return null
   const hourlyRate = salary / STANDARD_MONTHLY_HOURS
-  const dailyRate = hourlyRate * 8
-  return Math.round((salary + approvedOtHours * hourlyRate - unpaidPtoDays * dailyRate + incentivesTotal) * 100) / 100
+  const expectedHours = workingDays * 8
+  const missingHours = Math.max(0, expectedHours - coveredHours - paidPtoDays * 8)
+  return Math.round((salary - missingHours * hourlyRate + approvedOtHours * hourlyRate + incentivesTotal) * 100) / 100
 }
 
 function SalaryModal({ employee, onClose, onSaved }: {
@@ -129,11 +131,12 @@ function SalaryModal({ employee, onClose, onSaved }: {
   )
 }
 
-function IncentiveModal({ employee, totalHours, approvedOtHours, unpaidPtoDays, current, periodStart, periodEnd, periodLabel, onClose, onSaved }: {
+function IncentiveModal({ employee, coveredHours, approvedOtHours, paidPtoDays, workingDays, current, periodStart, periodEnd, periodLabel, onClose, onSaved }: {
   employee: Employee
-  totalHours: number
+  coveredHours: number
   approvedOtHours: number
-  unpaidPtoDays: number
+  paidPtoDays: number
+  workingDays: number
   current: LocalIncentives
   periodStart: string
   periodEnd: string
@@ -145,7 +148,7 @@ function IncentiveModal({ employee, totalHours, approvedOtHours, unpaidPtoDays, 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
-  const netPay = computeNetPay(employee, totalHours, approvedOtHours, unpaidPtoDays, fields)
+  const netPay = computeNetPay(employee, coveredHours, approvedOtHours, paidPtoDays, workingDays, fields)
   const incentivesTotal = Object.values(fields).reduce((s, v) => s + (v ?? 0), 0)
 
   function set(key: keyof LocalIncentives, val: string) {
@@ -286,9 +289,10 @@ export function PayrollView({
   const totalNetPay = employees.reduce((sum, e) => {
     const hours = hoursMap[e.id] ?? 0
     const otHrs = approvedOtMap[e.id] ?? 0
-    const unpaidPto = ptoUnpaidMap[e.id] ?? 0
+    const paidPto = ptoPaidMap[e.id] ?? 0
+    const workDays = workingDaysMap[e.id] ?? 0
     const inc = localIncentives[e.id] ?? defaultIncentives(deductionMap[e.id] ?? null)
-    const np = computeNetPay(e, hours, otHrs, unpaidPto, inc)
+    const np = computeNetPay(e, hours, otHrs, paidPto, workDays, inc)
     return sum + (np ?? 0)
   }, 0)
 
@@ -296,7 +300,7 @@ export function PayrollView({
     const headers = [
       'Name', 'Location', 'Type', 'Monthly Salary', 'Hourly Rate',
       'Working Days', 'Expected Hours', 'Hours Worked', 'Approved OT Hrs',
-      'Paid PTO Days', 'Unpaid PTO Days', 'Missing Hours',
+      'Paid PTO Days', 'Unpaid TO Days', 'Missing Hours',
       'PTO Balance', 'PTO Used',
       'Intake Booking', 'Google Review', 'Performance', 'Referral', 'Reimbursements', 'Total Incentives',
       'Net Pay',
@@ -306,13 +310,13 @@ export function PayrollView({
       const inc = localIncentives[e.id] ?? defaultIncentives(d ?? null)
       const hours = hoursMap[e.id] ?? 0
       const otHrs = approvedOtMap[e.id] ?? 0
-      const unpaidPto = ptoUnpaidMap[e.id] ?? 0
       const paidPto = ptoPaidMap[e.id] ?? 0
+      const unpaidPto = ptoUnpaidMap[e.id] ?? 0
       const workingDays = workingDaysMap[e.id] ?? 0
       const expectedHours = workingDays * 8
       const missingHours = Math.max(0, expectedHours - hours - paidPto * 8)
       const incentivesTotal = Object.values(inc).reduce((s, v) => s + (v ?? 0), 0)
-      const netPay = computeNetPay(e, hours, otHrs, unpaidPto, inc)
+      const netPay = computeNetPay(e, hours, otHrs, paidPto, workingDays, inc)
       return [
         e.name,
         e.office_location ?? '',
@@ -350,9 +354,10 @@ export function PayrollView({
   }
 
   const incentiveEmpData = incentiveEmployee ? {
-    totalHours: hoursMap[incentiveEmployee.id] ?? 0,
+    coveredHours: hoursMap[incentiveEmployee.id] ?? 0,
     approvedOtHours: approvedOtMap[incentiveEmployee.id] ?? 0,
-    unpaidPtoDays: ptoUnpaidMap[incentiveEmployee.id] ?? 0,
+    paidPtoDays: ptoPaidMap[incentiveEmployee.id] ?? 0,
+    workingDays: workingDaysMap[incentiveEmployee.id] ?? 0,
     current: localIncentives[incentiveEmployee.id] ?? defaultIncentives(deductionMap[incentiveEmployee.id] ?? null),
   } : null
 
@@ -368,9 +373,10 @@ export function PayrollView({
       {incentiveEmployee && incentiveEmpData && (
         <IncentiveModal
           employee={incentiveEmployee}
-          totalHours={incentiveEmpData.totalHours}
+          coveredHours={incentiveEmpData.coveredHours}
           approvedOtHours={incentiveEmpData.approvedOtHours}
-          unpaidPtoDays={incentiveEmpData.unpaidPtoDays}
+          paidPtoDays={incentiveEmpData.paidPtoDays}
+          workingDays={incentiveEmpData.workingDays}
           current={incentiveEmpData.current}
           periodStart={periodStart}
           periodEnd={periodEnd}
@@ -423,7 +429,7 @@ export function PayrollView({
                 <th>Hours Worked</th>
                 <th>Approved OT</th>
                 <th>Paid PTO</th>
-                <th>Unpaid PTO</th>
+                <th>Unpaid TO</th>
                 <th>Missing Hrs</th>
                 <th>PTO Balance</th>
                 <th>Incentives</th>
@@ -451,7 +457,7 @@ export function PayrollView({
                   const expectedHours = workingDays * 8
                   const missingHours = Math.max(0, expectedHours - totalHours - paidPtoDays * 8)
                   const pto = ptoMap[e.id] ?? 0
-                  const netPay = computeNetPay(e, totalHours, approvedOtHours, unpaidPtoDays, inc)
+                  const netPay = computeNetPay(e, totalHours, approvedOtHours, paidPtoDays, workingDays, inc)
                   const incentivesTotal = Object.values(inc).reduce((s, v) => s + (v ?? 0), 0)
                   const hasSalary = isHourly ? e.hourly_rate != null : e.monthly_salary != null
                   const isTerminated = e.employment_end_date != null && e.employment_end_date <= periodEnd
@@ -557,13 +563,11 @@ export function PayrollView({
                       <td style={{
                         fontVariantNumeric: 'tabular-nums',
                         fontWeight: 600,
-                        color: netPay == null
+                        color: netPay == null || !hasSalary
                           ? 'var(--text-muted)'
-                          : !hasSalary
-                            ? 'var(--text-muted)'
-                            : unpaidPtoDays > 0
-                              ? 'var(--amber)'
-                              : 'var(--green)',
+                          : missingHours > 0
+                            ? 'var(--amber)'
+                            : 'var(--green)',
                       }}>
                         {netPay != null
                           ? `$${netPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

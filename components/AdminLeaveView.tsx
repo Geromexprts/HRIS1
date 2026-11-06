@@ -109,12 +109,67 @@ function ActionModal({ request, employeeName, onClose, onDone }: {
   )
 }
 
+function UndoModal({ request, employeeName, onClose, onDone }: {
+  request: LeaveRequest
+  employeeName: string
+  onClose: () => void
+  onDone: (updated: LeaveRequest) => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function submit() {
+    setSaving(true); setError('')
+    const res = await fetch('/api/approvals', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: request.id, action: 'undo' }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed.'); setSaving(false); return }
+    onDone(data)
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Undo Approved Leave</div>
+        <div className="modal-sub">
+          {employeeName} · {request.days_requested} day{request.days_requested !== 1 ? 's' : ''}
+          {request.leave_type && (
+            <span style={{
+              fontSize: 10, padding: '1px 7px', borderRadius: 4, fontWeight: 700,
+              background: `${LEAVE_TYPE_COLOR[request.leave_type] ?? '#6366f1'}18`,
+              color: LEAVE_TYPE_COLOR[request.leave_type] ?? 'var(--accent)',
+              textTransform: 'uppercase', letterSpacing: '0.04em', marginLeft: 8,
+            }}>
+              {leaveTypeLabel(request.leave_type)}
+            </span>
+          )}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 20 }}>
+          This will revert the leave back to <strong>pending</strong>.
+          {request.leave_type === 'pto' && ' Any PTO balance deducted will be restored.'}
+        </p>
+        {error && <p style={{ fontSize: 12.5, color: 'var(--red)', marginBottom: 12 }}>{error}</p>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={submit} disabled={saving} className="btn btn-red" style={{ flex: 1 }}>
+            {saving ? 'Undoing…' : 'Undo Approval'}
+          </button>
+          <button onClick={onClose} className="btn btn-ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function AdminLeaveView({ employees, initialRequests }: {
   employees: Employee[]
   initialRequests: LeaveRequest[]
 }) {
   const [requests, setRequests] = useState(initialRequests)
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
+  const [undoing, setUndoing] = useState<LeaveRequest | null>(null)
   const [empFilter, setEmpFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [leaveTypeFilter, setLeaveTypeFilter] = useState('all')
@@ -175,6 +230,7 @@ export function AdminLeaveView({ employees, initialRequests }: {
   function handleDone(updated: LeaveRequest) {
     setRequests(prev => prev.map(r => r.id === updated.id ? updated : r))
     setReviewing(null)
+    setUndoing(null)
   }
 
   return (
@@ -184,6 +240,14 @@ export function AdminLeaveView({ employees, initialRequests }: {
           request={reviewing}
           employeeName={empMap[reviewing.employee_id]?.name ?? 'Unknown'}
           onClose={() => setReviewing(null)}
+          onDone={handleDone}
+        />
+      )}
+      {undoing && (
+        <UndoModal
+          request={undoing}
+          employeeName={empMap[undoing.employee_id]?.name ?? 'Unknown'}
+          onClose={() => setUndoing(null)}
           onDone={handleDone}
         />
       )}
@@ -316,11 +380,18 @@ export function AdminLeaveView({ employees, initialRequests }: {
                     </td>
                     <td style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 200 }}>{r.approver_note ?? '—'}</td>
                     <td>
-                      {r.status === 'pending' && (
-                        <button onClick={() => setReviewing(r)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap' }}>
-                          Review
-                        </button>
-                      )}
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {r.status === 'pending' && (
+                          <button onClick={() => setReviewing(r)} className="btn btn-primary" style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap' }}>
+                            Review
+                          </button>
+                        )}
+                        {r.status === 'approved' && (
+                          <button onClick={() => setUndoing(r)} className="btn btn-ghost" style={{ fontSize: 12, padding: '5px 12px', whiteSpace: 'nowrap', color: 'var(--red)', borderColor: 'var(--red)' }}>
+                            Undo
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
