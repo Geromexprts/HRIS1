@@ -773,6 +773,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                   <th>Employee</th>
                   <th>Days In</th>
                   <th>Expected Days</th>
+                  <th>Expected Hrs</th>
                   <th>Biz Days</th>
                   <th>Attendance</th>
                   <th>Total Hours</th>
@@ -798,6 +799,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                       </td>
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{expectedDays}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{expectedDays * 8}h</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
                       <td>
                         <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
@@ -972,7 +974,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
 
     else if (tab === 'monthly') {
       const rows: (string | number)[][] = [
-        ['Employee', 'Days Present', 'Expected Days', 'Business Days', 'Attendance %', 'Total Hours', 'Covered Hrs', 'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Period'],
+        ['Employee', 'Days Present', 'Expected Days', 'Expected Hrs', 'Business Days', 'Attendance %', 'Total Hours', 'Covered Hrs', 'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Period'],
       ]
       for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
         const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
