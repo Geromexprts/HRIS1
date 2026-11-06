@@ -134,3 +134,89 @@ export async function sendLeaveSubmittedEmail({
     console.error('[email] failed to send leave submitted email:', err)
   }
 }
+
+export async function sendClockInReminderEmail({
+  toEmail,
+  toName,
+  today,
+  ccEmail,
+}: {
+  toEmail: string
+  toName: string
+  today: string
+  ccEmail?: string
+}) {
+  const subject = `Clock-in Reminder — ${today}`
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 520px; margin: 0 auto; color: #1a1f2e;">
+      <div style="background: #1A2035; padding: 24px 32px; border-radius: 10px 10px 0 0;">
+        <p style="color: #8B97B4; font-size: 12px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">HRIS Portal · xprts.com</p>
+        <h1 style="color: #ffffff; font-size: 20px; margin: 0; font-weight: 600;">Clock-in Reminder</h1>
+      </div>
+      <div style="background: #ffffff; padding: 28px 32px; border: 1px solid #e5e9f2; border-top: none; border-radius: 0 0 10px 10px;">
+        <p style="margin: 0 0 20px; font-size: 14px; color: #4a5168;">Hi ${toName},</p>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #4a5168;">
+          It looks like you haven't clocked in yet today (<strong>${today}</strong>). Please clock in as soon as you start work.
+        </p>
+        <a href="${PORTAL_URL}/dashboard/time" style="display: inline-block; background: #4f6ef7; color: #ffffff; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;">Clock In Now</a>
+        <p style="margin: 20px 0 0; font-size: 12px; color: #8B97B4;">If you are on approved leave today, please disregard this message.</p>
+      </div>
+    </div>
+  `
+
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      cc: ccEmail ? [ccEmail] : undefined,
+      subject,
+      html,
+    })
+  } catch (err) {
+    console.error('[email] failed to send clock-in reminder:', err)
+  }
+}
+
+export async function sendMissingClockoutEmail({
+  toEmail,
+  toName,
+  date,
+  ccEmail,
+}: {
+  toEmail: string
+  toName: string
+  date: string
+  ccEmail?: string
+}) {
+  const subject = `Missing Clock-out — ${date}`
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 520px; margin: 0 auto; color: #1a1f2e;">
+      <div style="background: #1A2035; padding: 24px 32px; border-radius: 10px 10px 0 0;">
+        <p style="color: #8B97B4; font-size: 12px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.08em;">HRIS Portal · xprts.com</p>
+        <h1 style="color: #ffffff; font-size: 20px; margin: 0; font-weight: 600;">Missing Clock-out</h1>
+      </div>
+      <div style="background: #ffffff; padding: 28px 32px; border: 1px solid #e5e9f2; border-top: none; border-radius: 0 0 10px 10px;">
+        <p style="margin: 0 0 20px; font-size: 14px; color: #4a5168;">Hi ${toName},</p>
+        <p style="margin: 0 0 20px; font-size: 14px; color: #4a5168;">
+          Your time entry for <strong>${date}</strong> shows a clock-in but no clock-out. Please edit your entry to log your end time.
+        </p>
+        <a href="${PORTAL_URL}/dashboard/time" style="display: inline-block; background: #4f6ef7; color: #ffffff; padding: 10px 20px; border-radius: 6px; font-size: 13px; font-weight: 600; text-decoration: none;">Edit Time Entry</a>
+        <p style="margin: 20px 0 0; font-size: 12px; color: #8B97B4;">If you need help editing a past entry, contact HR.</p>
+      </div>
+    </div>
+  `
+
+  try {
+    await resend.emails.send({
+      from: FROM,
+      to: toEmail,
+      cc: ccEmail ? [ccEmail] : undefined,
+      subject,
+      html,
+    })
+  } catch (err) {
+    console.error('[email] failed to send missing clock-out email:', err)
+  }
+}

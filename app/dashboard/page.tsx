@@ -591,6 +591,7 @@ async function AdminDashboard() {
 
 async function EmployeeDashboard(userId: string, email: string, today: string) {
   const [year, month] = today.split('-').map(Number)
+  const prevDay = prevWorkday(today)
 
   const [
     { data: employee },
@@ -598,6 +599,8 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
     { data: pendingLeave },
     { data: todayEntry },
     { data: outToday },
+    { data: prevDayEntry },
+    { data: prevDayLeave },
   ] = await Promise.all([
     supabaseAdmin.from('employees').select('name, role, employment_start_date').eq('work_email', email).single(),
     supabaseAdmin.from('pto_balances').select('current_balance, last_accrual_date, accrual_history').eq('employee_id', userId).single(),
@@ -609,6 +612,8 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
       .eq('status', 'approved')
       .lte('start_date', today)
       .gte('end_date', today),
+    supabaseAdmin.from('time_entries').select('id').eq('employee_id', userId).eq('date', prevDay).maybeSingle(),
+    supabaseAdmin.from('leave_requests').select('id').eq('employee_id', userId).eq('status', 'approved').lte('start_date', prevDay).gte('end_date', prevDay).maybeSingle(),
   ])
 
   let ptoBalance = ptoBefore?.current_balance ?? 0
@@ -658,6 +663,31 @@ async function EmployeeDashboard(userId: string, email: string, today: string) {
         <h1 className="page-title">Good {getGreeting()}, {employee?.name?.split(' ')[0] ?? 'there'}</h1>
         <p className="page-subtitle">Here&apos;s your summary for today — {today}.</p>
       </div>
+
+      {/* Missing time entry warning */}
+      {!prevDayEntry && !prevDayLeave && (
+        <div style={{
+          background: 'rgba(245, 158, 11, 0.08)',
+          border: '1px solid var(--amber)',
+          borderRadius: 8,
+          padding: '12px 16px',
+          marginBottom: 16,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 12,
+        }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--amber)' }}>Missing Time Entry</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+              No time entry recorded for {prevDay}. Please log your hours.
+            </div>
+          </div>
+          <Link href="/dashboard/time" style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}>
+            Log Time →
+          </Link>
+        </div>
+      )}
 
       {/* Stat cards */}
       <div className="stat-grid" style={{ marginBottom: 16 }}>
@@ -812,4 +842,13 @@ function getGreeting() {
   if (h < 12) return 'morning'
   if (h < 17) return 'afternoon'
   return 'evening'
+}
+
+function prevWorkday(today: string): string {
+  const [y, m, d] = today.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  do {
+    dt.setDate(dt.getDate() - 1)
+  } while (dt.getDay() === 0 || dt.getDay() === 6)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
