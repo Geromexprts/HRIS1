@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
 
   const empById = Object.fromEntries((employees ?? []).map(e => [e.id, e]))
 
+  const dryRun = new URL(req.url).searchParams.get('dry_run') === 'true'
   const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString()
   const geromeEmail = process.env.GEROME_EMAIL ?? 'geromemontealegre@xprts.com'
   let notified = 0
@@ -62,24 +63,26 @@ export async function POST(req: NextRequest) {
 
     if (existing) continue
 
-    await supabaseAdmin.from('notifications').insert({
-      employee_id: entry.employee_id,
-      title: 'Missing Clock-out',
-      body: `Your time entry for ${checkDate} was never clocked out. Please edit it in My Time.`,
-      link: '/dashboard/time',
-    })
-
-    if (emp?.work_email) {
-      await sendMissingClockoutEmail({
-        toEmail: emp.work_email,
-        toName: emp.name ?? 'there',
-        date: checkDate,
-        ccEmail: geromeEmail,
+    if (!dryRun) {
+      await supabaseAdmin.from('notifications').insert({
+        employee_id: entry.employee_id,
+        title: 'Missing Clock-out',
+        body: `Your time entry for ${checkDate} was never clocked out. Please edit it in My Time.`,
+        link: '/dashboard/time',
       })
+
+      if (emp?.work_email) {
+        await sendMissingClockoutEmail({
+          toEmail: emp.work_email,
+          toName: emp.name ?? 'there',
+          date: checkDate,
+          ccEmail: geromeEmail,
+        })
+      }
     }
 
     notified++
   }
 
-  return NextResponse.json({ notified, date: checkDate })
+  return NextResponse.json({ notified, date: checkDate, dry_run: dryRun })
 }

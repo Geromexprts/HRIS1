@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
 
   const onLeaveIds = new Set((todayLeaves ?? []).map((r: { employee_id: string }) => r.employee_id))
 
+  const dryRun = new URL(req.url).searchParams.get('dry_run') === 'true'
   const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString()
   const geromeEmail = process.env.GEROME_EMAIL ?? 'geromemontealegre@xprts.com'
   let notified = 0
@@ -60,24 +61,26 @@ export async function POST(req: NextRequest) {
 
     if (existing) continue
 
-    await supabaseAdmin.from('notifications').insert({
-      employee_id: emp.id,
-      title: 'Clock-in Reminder',
-      body: `You haven't clocked in yet today (${today}). Please clock in when you start work.`,
-      link: '/dashboard/time',
-    })
-
-    if (emp.work_email) {
-      await sendClockInReminderEmail({
-        toEmail: emp.work_email,
-        toName: emp.name ?? 'there',
-        today,
-        ccEmail: geromeEmail,
+    if (!dryRun) {
+      await supabaseAdmin.from('notifications').insert({
+        employee_id: emp.id,
+        title: 'Clock-in Reminder',
+        body: `You haven't clocked in yet today (${today}). Please clock in when you start work.`,
+        link: '/dashboard/time',
       })
+
+      if (emp.work_email) {
+        await sendClockInReminderEmail({
+          toEmail: emp.work_email,
+          toName: emp.name ?? 'there',
+          today,
+          ccEmail: geromeEmail,
+        })
+      }
     }
 
     notified++
   }
 
-  return NextResponse.json({ notified, date: today })
+  return NextResponse.json({ notified, date: today, dry_run: dryRun })
 }
