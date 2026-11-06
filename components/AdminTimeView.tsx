@@ -771,16 +771,15 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
               <thead>
                 <tr>
                   <th>Employee</th>
-                  <th>Days In</th>
                   <th>Expected Days</th>
+                  <th>Days In</th>
                   <th>Expected Hrs</th>
-                  <th>Biz Days</th>
-                  <th>Attendance</th>
-                  <th>Total Hours</th>
                   <th>Covered Hrs</th>
                   <th>Approved OT</th>
                   <th>Paid PTO</th>
                   <th>Unpaid TO</th>
+                  <th>Attendance</th>
+                  <th>Biz Days</th>
                   <th></th>
                 </tr>
               </thead>
@@ -797,16 +796,9 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                       <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
                         <Link href={`/dashboard/admin/employees/${emp.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>{emp.name}</Link>
                       </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{expectedDays}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>{daysPresent}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{expectedDays * 8}h</td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
-                      <td>
-                        <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                          {attendance}%
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{fmtH(Math.round(total * 10) / 10)}</td>
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{fmtH(Math.round(regularHrs * 10) / 10)}</td>
                       <td style={{ color: approvedOt > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: approvedOt > 0 ? 600 : 400, fontVariantNumeric: 'tabular-nums' }}>
                         {approvedOt > 0 ? `+${fmtH(approvedOt)}` : '—'}
@@ -817,6 +809,12 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: unpaidPto > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: unpaidPto > 0 ? 600 : 400 }}>
                         {unpaidPto > 0 ? `${unpaidPto}d` : '—'}
                       </td>
+                      <td>
+                        <span style={{ color: attendance < 60 ? 'var(--red)' : attendance < 80 ? 'var(--amber)' : 'var(--green)', fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                          {attendance}%
+                        </span>
+                      </td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{periodBizDays}</td>
                       <td>
                         <button onClick={() => setMonthEntriesEmp(emp)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Entries</button>
                       </td>
@@ -974,7 +972,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
 
     else if (tab === 'monthly') {
       const rows: (string | number)[][] = [
-        ['Employee', 'Days Present', 'Expected Days', 'Expected Hrs', 'Business Days', 'Attendance %', 'Total Hours', 'Covered Hrs', 'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Period'],
+        ['Employee', 'Expected Days', 'Days Present', 'Expected Hrs', 'Covered Hrs', 'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Attendance %', 'Business Days', 'Period'],
       ]
       for (const emp of (empFilter === 'all' ? employees : employees.filter(e => e.id === empFilter))) {
         const empEntries = periodDays.map(d => byEmpDate[emp.id]?.[d] ?? null)
@@ -990,7 +988,7 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
         const unpaidPto = ptoUnpaidMap[emp.id] ?? 0
         const elapsedTo = viewTo < today ? viewTo : today
         const csvExpectedDays = bizDays(genDays(viewFrom, elapsedTo))
-        rows.push([emp.name, daysPresent, csvExpectedDays, periodBizDays, `${attendance}%`, fmtDecimal(Math.round(total * 100) / 100), fmtDecimal(Math.round(regularHrs * 100) / 100), approvedOt > 0 ? fmtDecimal(approvedOt) : 0, paidPto, unpaidPto, `${viewFrom} to ${viewTo}`])
+        rows.push([emp.name, csvExpectedDays, daysPresent, csvExpectedDays * 8, fmtDecimal(Math.round(regularHrs * 100) / 100), approvedOt > 0 ? fmtDecimal(approvedOt) : 0, paidPto, unpaidPto, `${attendance}%`, periodBizDays, `${viewFrom} to ${viewTo}`])
       }
       downloadCSV(`Team-Time-Period-${viewFrom}_to_${viewTo}.csv`, rows)
     }
