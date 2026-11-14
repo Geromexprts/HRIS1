@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { holidayMap } from '@/lib/holidays'
 
 const LA_TZ = 'America/Los_Angeles'
 
@@ -130,7 +131,9 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
       .then(r => r.json())
       .then((entry: { total_hours: number | null; clock_out: string | null } | null) => {
         if (entry?.clock_out && entry.total_hours != null) {
-          const ot = entry.total_hours - 8
+          const year = parseInt(date.split('-')[0])
+          const isHoliday = !!holidayMap(year)[date]
+          const ot = isHoliday ? entry.total_hours : entry.total_hours - 8
           const max = Math.floor(ot * 2) / 2
           setMaxOtHours(max > 0 ? max : 0)
         } else {
@@ -165,6 +168,8 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
     onSubmit(data)
   }
 
+  const year = parseInt(date.split('-')[0])
+  const isHoliday = !!holidayMap(year)[date]
   const noOtAvailable = maxOtHours !== null && maxOtHours <= 0
 
   return (
@@ -181,7 +186,9 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
               OT Hours
               {loadingEntry && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>checking…</span>}
               {!loadingEntry && maxOtHours !== null && maxOtHours > 0 && (
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>max {maxOtHours}h based on logged hours</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
+                  max {maxOtHours}h {isHoliday ? '(holiday — all hours count as OT)' : 'based on logged hours'}
+                </span>
               )}
             </label>
             {noOtAvailable ? (
