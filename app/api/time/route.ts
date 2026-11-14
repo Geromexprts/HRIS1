@@ -10,6 +10,23 @@ function calcTotalHours(clockIn: string, clockOut: string, skipBreak = false) {
 }
 
 
+export async function GET(req: NextRequest) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const date = new URL(req.url).searchParams.get('date')
+  if (!date) return NextResponse.json({ error: 'date required' }, { status: 400 })
+
+  const { data } = await supabaseAdmin
+    .from('time_entries')
+    .select('total_hours, clock_out')
+    .eq('employee_id', session.user.id)
+    .eq('date', date)
+    .maybeSingle()
+
+  return NextResponse.json(data ?? null)
+}
+
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

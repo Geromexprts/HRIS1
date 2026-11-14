@@ -121,6 +121,37 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [maxOtHours, setMaxOtHours] = useState<number | null>(null)
+  const [loadingEntry, setLoadingEntry] = useState(false)
+
+  useEffect(() => {
+    setLoadingEntry(true)
+    fetch(`/api/time?date=${date}`)
+      .then(r => r.json())
+      .then((entry: { total_hours: number | null; clock_out: string | null } | null) => {
+        if (entry?.clock_out && entry.total_hours != null) {
+          const ot = entry.total_hours - 8
+          const max = Math.floor(ot * 2) / 2
+          setMaxOtHours(max > 0 ? max : 0)
+        } else {
+          setMaxOtHours(null)
+        }
+        setLoadingEntry(false)
+      })
+      .catch(() => { setMaxOtHours(null); setLoadingEntry(false) })
+  }, [date])
+
+  const availableOptions = maxOtHours !== null
+    ? OT_HOUR_OPTIONS.filter(h => h <= maxOtHours)
+    : OT_HOUR_OPTIONS
+
+  useEffect(() => {
+    if (availableOptions.length > 0 && parseFloat(hours) > (availableOptions[availableOptions.length - 1] ?? 0)) {
+      setHours(String(availableOptions[availableOptions.length - 1]))
+    } else if (availableOptions.length === 0) {
+      setHours('0')
+    }
+  }, [maxOtHours]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function submit() {
     setSaving(true); setError('')
@@ -134,6 +165,8 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
     onSubmit(data)
   }
 
+  const noOtAvailable = maxOtHours !== null && maxOtHours <= 0
+
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -144,12 +177,28 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
             <input type="date" value={date} onChange={e => setDate(e.target.value)} max={todayLA} className="field-input" />
           </div>
           <div>
-            <label className="field-label">OT Hours</label>
-            <select value={hours} onChange={e => setHours(e.target.value)} className="field-input">
-              {OT_HOUR_OPTIONS.map(h => (
-                <option key={h} value={String(h)}>{h}h</option>
-              ))}
-            </select>
+            <label className="field-label">
+              OT Hours
+              {loadingEntry && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>checking…</span>}
+              {!loadingEntry && maxOtHours !== null && maxOtHours > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>max {maxOtHours}h based on logged hours</span>
+              )}
+            </label>
+            {noOtAvailable ? (
+              <p style={{ fontSize: 12.5, color: 'var(--amber)', margin: '4px 0 0' }}>
+                No overtime available — logged hours did not exceed 8h on this date.
+              </p>
+            ) : maxOtHours === null && !loadingEntry ? (
+              <p style={{ fontSize: 12.5, color: 'var(--text-muted)', margin: '4px 0 0' }}>
+                No completed time entry found for this date.
+              </p>
+            ) : (
+              <select value={hours} onChange={e => setHours(e.target.value)} className="field-input" disabled={loadingEntry || noOtAvailable}>
+                {availableOptions.map(h => (
+                  <option key={h} value={String(h)}>{h}h</option>
+                ))}
+              </select>
+            )}
           </div>
           <div>
             <label className="field-label">Reason <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
@@ -165,7 +214,7 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
           {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
         </div>
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-          <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+          <button onClick={submit} disabled={saving || noOtAvailable || maxOtHours === null} className="btn btn-primary" style={{ flex: 1 }}>
             {saving ? 'Submitting…' : 'Submit OT Request'}
           </button>
           <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
