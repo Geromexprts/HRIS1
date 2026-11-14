@@ -132,8 +132,11 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
       .then((entry: { total_hours: number | null; clock_out: string | null } | null) => {
         if (entry?.clock_out && entry.total_hours != null) {
           const year = parseInt(date.split('-')[0])
+          const [dy, dm, dd] = date.split('-').map(Number)
+          const dow = new Date(dy, dm - 1, dd).getDay()
           const isHoliday = !!holidayMap(year)[date]
-          const ot = isHoliday ? entry.total_hours : entry.total_hours - 8
+          const isWeekend = dow === 0 || dow === 6
+          const ot = (isHoliday || isWeekend) ? entry.total_hours : entry.total_hours - 8
           const max = Math.floor(ot * 2) / 2
           setMaxOtHours(max > 0 ? max : 0)
         } else {
@@ -169,7 +172,10 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
   }
 
   const year = parseInt(date.split('-')[0])
+  const [dy, dm, dd] = date.split('-').map(Number)
+  const dow = new Date(dy, dm - 1, dd).getDay()
   const isHoliday = !!holidayMap(year)[date]
+  const isWeekend = dow === 0 || dow === 6
   const noOtAvailable = maxOtHours !== null && maxOtHours <= 0
 
   return (
@@ -187,7 +193,7 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
               {loadingEntry && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>checking…</span>}
               {!loadingEntry && maxOtHours !== null && maxOtHours > 0 && (
                 <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>
-                  max {maxOtHours}h {isHoliday ? '(holiday — all hours count as OT)' : 'based on logged hours'}
+                  max {maxOtHours}h {isHoliday ? '(holiday — all hours count as OT)' : isWeekend ? '(weekend — all hours count as OT)' : 'based on logged hours'}
                 </span>
               )}
             </label>
