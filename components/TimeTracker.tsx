@@ -112,124 +112,45 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
   )
 }
 
-function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) {
-  const [step, setStep] = useState<'ask' | 'form' | 'done'>('ask')
-  const [otStartTime, setOtStartTime] = useState('')
-  const [otEndTime, setOtEndTime] = useState('')
+const OT_HOUR_OPTIONS = Array.from({ length: 20 }, (_, i) => Math.round((i + 1) * 0.5 * 10) / 10)
+
+function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtRequest) => void }) {
+  const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: LA_TZ }).format(new Date())
+  const [date, setDate] = useState(todayLA)
+  const [hours, setHours] = useState('1')
   const [reason, setReason] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [submittedHours, setSubmittedHours] = useState('')
-
-  function initFormTimes() {
-    // Pre-fill end time with clock-out, start time 1h before
-    const clockOutLA = utcToLAInput(entry.clock_out)
-    setOtEndTime(clockOutLA ? clockOutLA.split('T')[1] : '')
-    if (clockOutLA) {
-      const [h, m] = clockOutLA.split('T')[1].split(':').map(Number)
-      const startH = h - 1
-      if (startH >= 0) {
-        setOtStartTime(`${String(startH).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-      } else {
-        setOtStartTime('')
-      }
-    }
-  }
 
   async function submit() {
-    if (!otStartTime || !otEndTime) { setError('Both start and end times are required.'); return }
-    // Build ISO timestamps using the entry's date
-    const toISO = (timeStr: string) => laInputToUTC(`${entry.date}T${timeStr}`)
-    const startISO = toISO(otStartTime)
-    const endISO = toISO(otEndTime)
-    if (new Date(endISO) <= new Date(startISO)) { setError('End time must be after start time.'); return }
-    const hrs = Math.round(((new Date(endISO).getTime() - new Date(startISO).getTime()) / 3600000) * 100) / 100
     setSaving(true); setError('')
     const res = await fetch('/api/ot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ date: entry.date, ot_start_time: startISO, ot_end_time: endISO, reason: reason || null, time_entry_id: entry.id }),
+      body: JSON.stringify({ date, ot_hours: parseFloat(hours), reason: reason || null }),
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed to submit.'); setSaving(false); return }
-    setSubmittedHours(String(hrs))
-    setStep('done')
+    onSubmit(data)
   }
-
-  if (step === 'done') {
-    return (
-      <div className="modal-overlay">
-        <div className="modal" style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
-          <div className="modal-title">OT Request Submitted</div>
-          <div className="modal-sub" style={{ marginBottom: 20 }}>
-            Your overtime request for {submittedHours}h has been sent to your manager for approval.
-          </div>
-          <button onClick={onClose} className="btn btn-primary" style={{ width: '100%' }}>Done</button>
-        </div>
-      </div>
-    )
-  }
-
-  if (step === 'ask') {
-    return (
-      <div className="modal-overlay">
-        <div className="modal">
-          <div className="modal-title">Did you work overtime today?</div>
-          <div className="modal-sub" style={{ marginBottom: 20 }}>
-            {toDate(entry.date)} · {entry.total_hours}h logged
-          </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={() => { initFormTimes(); setStep('form') }} className="btn btn-primary" style={{ flex: 1 }}>
-              Yes, add OT request
-            </button>
-            <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>No, skip</button>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  const clockInDisplay = entry.clock_in ? toTime(entry.clock_in) : '—'
-  const clockOutDisplay = entry.clock_out ? toTime(entry.clock_out) : '—'
 
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <div className="modal-title">Overtime Request</div>
-        <div className="modal-sub">{toDate(entry.date)} · {entry.total_hours}h logged today</div>
-
-        <div style={{ background: 'var(--bg)', borderRadius: 8, padding: '10px 14px', marginBottom: 14, fontSize: 12.5, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-          <div><span style={{ color: 'var(--text-muted)' }}>Clocked In: </span><strong>{clockInDisplay}</strong></div>
-          <div><span style={{ color: 'var(--text-muted)' }}>Clocked Out: </span><strong>{clockOutDisplay}</strong></div>
-        </div>
-
+        <div className="modal-title">Request Overtime</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label className="field-label">OT Start Time</label>
-              <input
-                type="time"
-                value={otStartTime}
-                onChange={e => setOtStartTime(e.target.value)}
-                className="field-input"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="field-label">OT End Time</label>
-              <input
-                type="time"
-                value={otEndTime}
-                onChange={e => setOtEndTime(e.target.value)}
-                className="field-input"
-              />
-            </div>
+          <div>
+            <label className="field-label">Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} max={todayLA} className="field-input" />
           </div>
-          {otStartTime && otEndTime && (() => {
-            const hrs = Math.round(((new Date(`2000-01-01T${otEndTime}`).getTime() - new Date(`2000-01-01T${otStartTime}`).getTime()) / 3600000) * 100) / 100
-            return hrs > 0 ? <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>Duration: <strong>{hrs}h</strong></p> : null
-          })()}
+          <div>
+            <label className="field-label">OT Hours</label>
+            <select value={hours} onChange={e => setHours(e.target.value)} className="field-input">
+              {OT_HOUR_OPTIONS.map(h => (
+                <option key={h} value={String(h)}>{h}h</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="field-label">Reason <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span></label>
             <textarea
@@ -243,12 +164,11 @@ function OtModal({ entry, onClose }: { entry: TimeEntry; onClose: () => void }) 
           </div>
           {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
         </div>
-
         <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
           <button onClick={submit} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
             {saving ? 'Submitting…' : 'Submit OT Request'}
           </button>
-          <button onClick={() => setStep('ask')} className="btn btn-ghost">Back</button>
+          <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
         </div>
       </div>
     </div>
@@ -278,7 +198,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   const [loading, setLoading] = useState(false)
   const [elapsed, setElapsed] = useState('00:00:00')
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
-  const [otEntry, setOtEntry] = useState<TimeEntry | null>(null)
+  const [showOtModal, setShowOtModal] = useState(false)
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
   const [cancellingOt, setCancellingOt] = useState<string | null>(null)
@@ -317,9 +237,6 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
         const idx = prev.findIndex(e => e.id === data.id)
         return idx >= 0 ? prev.map(e => e.id === data.id ? data : e) : [data, ...prev]
       })
-      if (action === 'clock_out') {
-        setOtEntry(data)
-      }
     }
     setLoading(false)
   }
@@ -352,7 +269,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} />}
-      {otEntry && <OtModal entry={otEntry} onClose={() => setOtEntry(null)} />}
+      {showOtModal && <OtModal onClose={() => setShowOtModal(false)} onSubmit={r => { setOtRequests(prev => [r, ...prev]); setShowOtModal(false) }} />}
 
       {/* Clock card */}
       <div className="card">
@@ -408,18 +325,21 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
       </div>
 
       {/* OT Requests */}
-      {otRequests.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
-            <div className="card-title" style={{ marginBottom: 0 }}>Overtime Requests</div>
-          </div>
+      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Overtime Requests</div>
+          <button onClick={() => setShowOtModal(true)} className="btn btn-primary" style={{ fontSize: 12, padding: '6px 14px' }}>
+            + Request OT
+          </button>
+        </div>
+        {otRequests.length === 0 ? (
+          <div style={{ padding: '20px 24px', fontSize: 13, color: 'var(--text-muted)' }}>No overtime requests yet.</div>
+        ) : (
           <div className="table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>Date</th>
-                  <th>OT Start</th>
-                  <th>OT End</th>
                   <th>Hours</th>
                   <th>Status</th>
                   <th>Reason</th>
@@ -430,8 +350,6 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
                 {otRequests.map(r => (
                   <tr key={r.id}>
                     <td style={{ fontSize: 12.5 }}>{toDate(r.date)}</td>
-                    <td style={{ fontSize: 12.5 }}>{r.ot_start_time ? toTime(r.ot_start_time) : '—'}</td>
-                    <td style={{ fontSize: 12.5 }}>{r.ot_end_time ? toTime(r.ot_end_time) : '—'}</td>
                     <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.ot_hours}h</td>
                     <td>
                       <span className={`badge ${r.status === 'approved' ? 'badge-green' : r.status === 'denied' ? 'badge-red' : 'badge-amber'}`}>
@@ -455,8 +373,8 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* All time entries */}
       {entries.length > 0 && (

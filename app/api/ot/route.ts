@@ -31,45 +31,15 @@ export async function POST(req: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { date, ot_start_time, ot_end_time, reason, time_entry_id } = body
+  const { date, ot_hours: rawHours, reason } = body
 
-  if (!date || !ot_start_time || !ot_end_time) {
-    return NextResponse.json({ error: 'date, ot_start_time, and ot_end_time are required' }, { status: 400 })
+  if (!date || !rawHours) {
+    return NextResponse.json({ error: 'date and ot_hours are required' }, { status: 400 })
   }
 
-  const startMs = new Date(ot_start_time).getTime()
-  const endMs = new Date(ot_end_time).getTime()
-  if (endMs <= startMs) {
-    return NextResponse.json({ error: 'OT end time must be after start time' }, { status: 400 })
-  }
-
-  const ot_hours = Math.round(((endMs - startMs) / 3600000) * 100) / 100
-  if (ot_hours <= 0) {
-    return NextResponse.json({ error: 'OT duration must be greater than 0' }, { status: 400 })
-  }
-
-  // A3: validate end time does not exceed actual clock-out
-  if (time_entry_id) {
-    const { data: entry } = await supabaseAdmin
-      .from('time_entries')
-      .select('clock_out')
-      .eq('id', time_entry_id)
-      .single()
-
-    if (entry?.clock_out && new Date(ot_end_time) > new Date(entry.clock_out)) {
-      return NextResponse.json({ error: 'OT end time cannot be later than your actual clock-out time' }, { status: 400 })
-    }
-  }
-
-  // A4: early clock-in does not count toward OT — start must be at or after 8 AM LA time
-  const { data: empRow } = await supabaseAdmin
-    .from('employees')
-    .select('early_clock_in')
-    .eq('id', session.user.id)
-    .single()
-
-  if (empRow?.early_clock_in && laHour(ot_start_time) < 8) {
-    return NextResponse.json({ error: 'OT start time cannot be before 8:00 AM — early clock-in hours do not count toward overtime' }, { status: 400 })
+  const ot_hours = Math.round(parseFloat(rawHours) * 100) / 100
+  if (ot_hours <= 0 || ot_hours > 10) {
+    return NextResponse.json({ error: 'OT hours must be between 0.5 and 10' }, { status: 400 })
   }
 
   // Past-date OT requires admin unlock
@@ -96,10 +66,9 @@ export async function POST(req: Request) {
       employee_id: session.user.id,
       date,
       ot_hours,
-      ot_start_time,
-      ot_end_time,
+      ot_start_time: null,
+      ot_end_time: null,
       reason: reason || null,
-      time_entry_id: time_entry_id || null,
       status: 'pending',
     })
     .select()
