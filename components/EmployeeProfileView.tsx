@@ -900,7 +900,18 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                   ? <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No leave requests.</td></tr>
                   : filteredLeave.map(r => (
                     <tr key={r.id}>
-                      <td><span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, fontWeight: 700, background: 'var(--accent-soft)', color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{leaveTypeLabel(r.leave_type ?? 'pto')}</span></td>
+                      <td>
+                        <select
+                          value={r.leave_type ?? 'pto'}
+                          disabled={savingLeaveType === r.id}
+                          onChange={async ev => { await saveLeaveType(r.id, ev.target.value) }}
+                          style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', background: 'var(--surface)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          {[['pto', 'Paid'], ['unpaid', 'Unpaid TO'], ['sick', 'Sick'], ['holiday', 'Holiday Adj.'], ['emergency', 'Emergency']].map(([v, l]) => (
+                            <option key={v} value={v}>{l}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td style={{ fontSize: 12.5 }}>
                         {fmtDate(r.start_date)}{r.start_date !== r.end_date ? ` → ${fmtDate(r.end_date)}` : ''}
                         {r.is_half_day && <span className="badge badge-blue" style={{ marginLeft: 6 }}>Half</span>}
