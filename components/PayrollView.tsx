@@ -12,6 +12,7 @@ type Employee = {
   hourly_rate: number | null
   employment_type: string | null
   employment_end_date: string | null
+  shift_schedule: string | null
 }
 
 type DeductionRow = {
@@ -40,6 +41,20 @@ type PtoMap = Record<string, number>
 type DeductionMap = Record<string, DeductionRow>
 
 const STANDARD_MONTHLY_HOURS = 173.33
+
+function countBusinessDays(from: string, to: string): number {
+  const start = new Date(from + 'T12:00:00Z')
+  const end = new Date(to + 'T12:00:00Z')
+  if (end < start) return 0
+  let count = 0
+  const cur = new Date(start)
+  while (cur <= end) {
+    const dow = cur.getUTCDay()
+    if (dow !== 0 && dow !== 6) count++
+    cur.setUTCDate(cur.getUTCDate() + 1)
+  }
+  return count
+}
 
 function computeNetPay(
   emp: Employee,
@@ -296,18 +311,49 @@ export function PayrollView({
     return sum + (np ?? 0)
   }, 0)
 
+  // Period progress
+  const todayStr = new Date().toISOString().split('T')[0]
+  const clampedToday = todayStr > periodEnd ? periodEnd : todayStr < periodStart ? periodStart : todayStr
+  const totalPeriodDays = countBusinessDays(periodStart, periodEnd)
+  const elapsedDays = countBusinessDays(periodStart, clampedToday)
+
+  // Stat card totals
+  const totalDeductions = employees.reduce((sum, e) => {
+    if (e.employment_type === 'hourly') return sum
+    const salary = e.monthly_salary
+    if (salary == null) return sum
+    const hourlyRate = salary / STANDARD_MONTHLY_HOURS
+    const hours = hoursMap[e.id] ?? 0
+    const paidPto = ptoPaidMap[e.id] ?? 0
+    const workDays = workingDaysMap[e.id] ?? 0
+    const missingHours = Math.max(0, workDays * 8 - hours - paidPto * 8)
+    return sum + missingHours * hourlyRate
+  }, 0)
+
+  const totalOtPay = employees.reduce((sum, e) => {
+    const otHrs = approvedOtMap[e.id] ?? 0
+    if (otHrs <= 0) return sum
+    if (e.employment_type === 'hourly') return sum + (e.hourly_rate ?? 0) * otHrs
+    const salary = e.monthly_salary
+    if (salary == null) return sum
+    return sum + otHrs * (salary / STANDARD_MONTHLY_HOURS)
+  }, 0)
+
   function exportCSV() {
     const headers = [
-      'Name', 'Location', 'Type', 'Monthly Salary', 'Hourly Rate',
-      'Working Days', 'Expected Hours', 'Hours Worked', 'Approved OT Hrs',
-      'Paid PTO Days', 'Unpaid TO Days', 'Missing Hours',
+      'Name', 'Location', 'Schedule', 'Type', 'Monthly Salary', 'Hourly Rate',
+      'Working Days', 'Expected Hours',
+      'Days So Far', 'Expected So Far', 'Hours Worked',
+      'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Missing Hours',
       'PTO Balance', 'PTO Used',
+      'Base Pay', 'Deductions', 'OT Pay',
       'Intake Booking', 'Google Review', 'Performance', 'Referral', 'Reimbursements', 'Total Incentives',
       'Net Pay',
     ]
     const rows = employees.map(e => {
       const d = deductionMap[e.id]
       const inc = localIncentives[e.id] ?? defaultIncentives(d ?? null)
+      const isHourly = e.employment_type === 'hourly'
       const hours = hoursMap[e.id] ?? 0
       const otHrs = approvedOtMap[e.id] ?? 0
       const paidPto = ptoPaidMap[e.id] ?? 0
@@ -317,14 +363,23 @@ export function PayrollView({
       const missingHours = Math.max(0, expectedHours - hours - paidPto * 8)
       const incentivesTotal = Object.values(inc).reduce((s, v) => s + (v ?? 0), 0)
       const netPay = computeNetPay(e, hours, otHrs, paidPto, workingDays, inc)
+      const empElapsed = Math.min(elapsedDays, workingDays)
+      const basePay = isHourly ? (e.hourly_rate ?? 0) * hours : (e.monthly_salary ?? 0)
+      const deduction = isHourly ? 0 : e.monthly_salary != null ? missingHours * (e.monthly_salary / STANDARD_MONTHLY_HOURS) : 0
+      const otPay = isHourly
+        ? otHrs * (e.hourly_rate ?? 0)
+        : e.monthly_salary != null ? otHrs * (e.monthly_salary / STANDARD_MONTHLY_HOURS) : 0
       return [
         e.name,
         e.office_location ?? '',
+        e.shift_schedule ?? '',
         e.employment_type ?? 'salaried',
         e.monthly_salary ?? '',
         e.hourly_rate ?? '',
         workingDays,
         expectedHours,
+        empElapsed,
+        empElapsed * 8,
         hours.toFixed(2),
         otHrs.toFixed(2),
         paidPto,
@@ -332,6 +387,9 @@ export function PayrollView({
         missingHours.toFixed(2),
         ptoMap[e.id] ?? 0,
         d?.pto_days_used ?? '',
+        basePay.toFixed(2),
+        deduction.toFixed(2),
+        otPay.toFixed(2),
         inc.intake_booking_incentive,
         inc.google_review_incentive,
         inc.performance_incentive,
@@ -361,6 +419,9 @@ export function PayrollView({
     current: localIncentives[incentiveEmployee.id] ?? defaultIncentives(deductionMap[incentiveEmployee.id] ?? null),
   } : null
 
+  const mtdBg = 'color-mix(in srgb, var(--accent) 7%, transparent)'
+  const todayBg = 'color-mix(in srgb, var(--text-muted) 8%, transparent)'
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {salaryEmployee && (
@@ -386,16 +447,31 @@ export function PayrollView({
         />
       )}
 
-      {/* Summary stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+      {/* 5 stat cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14 }}>
         <div className="stat-card">
           <div className="stat-label">Active Staff</div>
           <div className="stat-value">{employees.length}</div>
         </div>
         <div className="stat-card">
-          <div className="stat-label">Leave Taken (Period)</div>
-          <div className="stat-value" style={{ fontSize: 24, color: totalLeave > 0 ? 'var(--amber)' : 'var(--text-primary)' }}>
-            {totalLeave}<span className="stat-unit">days</span>
+          <div className="stat-label">Period Progress</div>
+          <div className="stat-value" style={{ fontSize: 22, color: 'var(--accent)' }}>
+            {elapsedDays} <span className="stat-unit">of {totalPeriodDays}</span>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+            working days ({totalPeriodDays > 0 ? Math.round(elapsedDays / totalPeriodDays * 100) : 0}%)
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Total Deductions</div>
+          <div className="stat-value" style={{ fontSize: 22, color: totalDeductions > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
+            {totalDeductions > 0 ? `−$${Math.round(totalDeductions).toLocaleString('en-US')}` : '—'}
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-label">Total OT Pay</div>
+          <div className="stat-value" style={{ fontSize: 22, color: totalOtPay > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+            {totalOtPay > 0 ? `+$${Math.round(totalOtPay).toLocaleString('en-US')}` : '—'}
           </div>
         </div>
         <div className="stat-card">
@@ -420,18 +496,47 @@ export function PayrollView({
         <div className="table-wrap">
           <table className="data-table">
             <thead>
+              {/* Column group labels */}
+              <tr>
+                <th colSpan={4} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', background: 'var(--bg-subtle, var(--border))' }}>
+                  Employee
+                </th>
+                <th colSpan={2} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', color: 'var(--text-muted)', background: 'var(--bg-subtle, var(--border))' }}>
+                  Full pay period
+                </th>
+                <th colSpan={3} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', background: mtdBg, color: 'var(--accent)' }}>
+                  Month to date (completed days)
+                </th>
+                <th style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', background: todayBg, color: 'var(--text-muted)' }}>
+                  Not counted yet
+                </th>
+                <th colSpan={5} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', color: 'var(--text-muted)', background: 'var(--bg-subtle, var(--border))' }}>
+                  Time off and adjustments
+                </th>
+                <th colSpan={5} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', borderLeft: '1px solid var(--border)', color: 'var(--text-muted)', background: 'var(--bg-subtle, var(--border))' }}>
+                  Pay computation
+                </th>
+              </tr>
+              {/* Column headers */}
               <tr>
                 <th>Employee</th>
                 <th>Location</th>
+                <th>Schedule</th>
                 <th>Salary / Rate</th>
-                <th>Working Days</th>
+                <th style={{ borderLeft: '1px solid var(--border)' }}>Working Days</th>
                 <th>Expected Hrs</th>
-                <th>Hours Worked</th>
-                <th>Approved OT</th>
+                <th style={{ borderLeft: '1px solid var(--border)', background: mtdBg, color: 'var(--accent)' }}>Days So Far</th>
+                <th style={{ background: mtdBg, color: 'var(--accent)' }}>Expected So Far</th>
+                <th style={{ background: mtdBg, color: 'var(--accent)' }}>Hours Worked</th>
+                <th style={{ background: todayBg }}>Today</th>
+                <th style={{ borderLeft: '1px solid var(--border)' }}>Approved OT</th>
                 <th>Paid PTO</th>
                 <th>Unpaid TO</th>
                 <th>Missing Hrs</th>
                 <th>PTO Balance</th>
+                <th style={{ borderLeft: '1px solid var(--border)' }}>Base Pay</th>
+                <th>Deductions</th>
+                <th>OT Pay</th>
                 <th>Incentives</th>
                 <th>Net Pay</th>
               </tr>
@@ -440,7 +545,7 @@ export function PayrollView({
               {employees.length === 0
                 ? (
                   <tr>
-                    <td colSpan={13} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
+                    <td colSpan={20} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
                       No active employees.
                     </td>
                   </tr>
@@ -466,8 +571,24 @@ export function PayrollView({
                     ? (e.monthly_salary / STANDARD_MONTHLY_HOURS) * 8
                     : null
 
+                  // MTD columns
+                  const empElapsedDays = Math.min(elapsedDays, workingDays)
+                  const expectedSoFar = empElapsedDays * 8
+
+                  // Pay computation columns
+                  const basePay: number | null = isHourly
+                    ? (e.hourly_rate != null ? e.hourly_rate * totalHours : null)
+                    : e.monthly_salary
+                  const deduction: number | null = isHourly
+                    ? 0
+                    : e.monthly_salary != null ? missingHours * (e.monthly_salary / STANDARD_MONTHLY_HOURS) : null
+                  const otPay: number | null = isHourly
+                    ? approvedOtHours * (e.hourly_rate ?? 0)
+                    : e.monthly_salary != null ? approvedOtHours * (e.monthly_salary / STANDARD_MONTHLY_HOURS) : null
+
                   return (
                     <tr key={e.id} style={isTerminated ? { background: 'color-mix(in srgb, var(--amber) 6%, transparent)' } : undefined}>
+                      {/* Employee */}
                       <td style={{ fontWeight: 600 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Link href={`/dashboard/admin/employees/${e.id}`} style={{ color: 'var(--accent)', textDecoration: 'none', fontWeight: 600 }}>
@@ -480,9 +601,15 @@ export function PayrollView({
                           )}
                         </div>
                       </td>
+                      {/* Location */}
                       <td style={{ textTransform: 'capitalize', color: 'var(--text-muted)', fontSize: 12.5 }}>
                         {e.office_location ?? '—'}
                       </td>
+                      {/* Schedule */}
+                      <td style={{ color: 'var(--text-muted)', fontSize: 12.5 }}>
+                        {e.shift_schedule ?? '—'}
+                      </td>
+                      {/* Salary / Rate */}
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {isHourly ? (
                           e.hourly_rate != null
@@ -506,24 +633,43 @@ export function PayrollView({
                           </div>
                         )}
                       </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>
+                      {/* Working Days */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'center', borderLeft: '1px solid var(--border)' }}>
                         {workingDays > 0 ? workingDays : '—'}
                       </td>
+                      {/* Expected Hrs */}
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', textAlign: 'center' }}>
                         {expectedHours > 0 ? `${expectedHours}h` : '—'}
                       </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', color: totalHours > 0 ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                      {/* Days So Far (MTD) */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', textAlign: 'center', borderLeft: '1px solid var(--border)', background: mtdBg }}>
+                        {empElapsedDays > 0 ? empElapsedDays : '—'}
+                      </td>
+                      {/* Expected So Far (MTD) */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', textAlign: 'center', background: mtdBg }}>
+                        {expectedSoFar > 0 ? `${expectedSoFar}h` : '—'}
+                      </td>
+                      {/* Hours Worked (MTD) */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: totalHours > 0 ? 'var(--text-primary)' : 'var(--text-muted)', background: mtdBg }}>
                         {totalHours > 0 ? totalHours.toFixed(1) : '—'}
                       </td>
-                      <td style={{ fontVariantNumeric: 'tabular-nums', color: approvedOtHours > 0 ? 'var(--accent)' : 'var(--text-muted)' }}>
+                      {/* Today (not counted) */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', textAlign: 'center', background: todayBg }}>
+                        —
+                      </td>
+                      {/* Approved OT */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', color: approvedOtHours > 0 ? 'var(--accent)' : 'var(--text-muted)', borderLeft: '1px solid var(--border)' }}>
                         {approvedOtHours > 0 ? `+${approvedOtHours.toFixed(1)}` : '—'}
                       </td>
+                      {/* Paid PTO */}
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: paidPtoDays > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>
                         {paidPtoDays > 0 ? `${paidPtoDays}d` : '—'}
                       </td>
+                      {/* Unpaid TO */}
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: unpaidPtoDays > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
                         {unpaidPtoDays > 0 ? `${unpaidPtoDays}d` : '—'}
                       </td>
+                      {/* Missing Hrs */}
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>
                         {missingHours > 0 ? (
                           <Link
@@ -534,6 +680,7 @@ export function PayrollView({
                           </Link>
                         ) : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                       </td>
+                      {/* PTO Balance */}
                       <td>
                         <span style={{
                           fontVariantNumeric: 'tabular-nums',
@@ -543,6 +690,25 @@ export function PayrollView({
                           {pto}d
                         </span>
                       </td>
+                      {/* Base Pay */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5, borderLeft: '1px solid var(--border)' }}>
+                        {basePay != null
+                          ? `$${basePay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      {/* Deductions */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
+                        {deduction != null && deduction > 0
+                          ? <span style={{ color: 'var(--red)' }}>−${deduction.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      {/* OT Pay */}
+                      <td style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12.5 }}>
+                        {otPay != null && otPay > 0
+                          ? <span style={{ color: 'var(--accent)' }}>+${otPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          : <span style={{ color: 'var(--text-muted)' }}>—</span>}
+                      </td>
+                      {/* Incentives */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{
@@ -560,6 +726,7 @@ export function PayrollView({
                           </button>
                         </div>
                       </td>
+                      {/* Net Pay */}
                       <td style={{
                         fontVariantNumeric: 'tabular-nums',
                         fontWeight: 600,

@@ -24,7 +24,7 @@ export default async function PayrollPage() {
   ] = await Promise.all([
     supabaseAdmin
       .from('employees')
-      .select('id, name, work_email, office_location, monthly_salary, hourly_rate, employment_type, employment_end_date, approver_id, employment_start_date')
+      .select('id, name, work_email, office_location, monthly_salary, hourly_rate, employment_type, employment_end_date, approver_id, employment_start_date, shift_schedule')
       .eq('status', 'active')
       .order('name'),
     supabaseAdmin
@@ -166,18 +166,23 @@ export default async function PayrollPage() {
   }
 
   // Strip employment_start_date from employees before passing to client component
-  const employeesForView = (employees ?? []).map(({ id, name, work_email, office_location, monthly_salary, hourly_rate, employment_type, employment_end_date }) => ({
-    id, name, work_email, office_location, monthly_salary,
-    hourly_rate: hourly_rate ?? null,
-    employment_type: employment_type ?? null,
-    employment_end_date: employment_end_date ?? null,
+  const employeesForView = (employees ?? []).map(emp => ({
+    id: emp.id,
+    name: emp.name,
+    work_email: emp.work_email,
+    office_location: emp.office_location,
+    monthly_salary: emp.monthly_salary,
+    hourly_rate: emp.hourly_rate ?? null,
+    employment_type: emp.employment_type ?? null,
+    employment_end_date: emp.employment_end_date ?? null,
+    shift_schedule: (emp as { shift_schedule?: string | null }).shift_schedule ?? null,
   }))
 
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Payroll</h1>
-        <p className="page-subtitle">Deduction breakdown for the current pay period. Set each employee&apos;s gross salary to compute deductions.</p>
+        <p className="page-subtitle">Deduction breakdown for the current pay period. Hours are compared against what is expected so far, not the full period.</p>
       </div>
       <PayrollView
         employees={employeesForView}
