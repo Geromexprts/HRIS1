@@ -74,6 +74,68 @@ function fmtMoney(n: number | null) {
   if (n == null) return '—'
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+function dayLabel(d: string) {
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })
+}
+
+function genDays(from: string, to: string): string[] {
+  const days: string[] = []
+  const d = new Date(from + 'T12:00:00')
+  const end = new Date(to + 'T12:00:00')
+  while (d <= end) {
+    days.push(d.toISOString().split('T')[0])
+    d.setDate(d.getDate() + 1)
+  }
+  return days
+}
+
+type DayTag = 'worked' | 'off' | 'paid_leave' | 'unpaid_leave' | 'missing'
+type TagOverride = { id: string; date: string; tag: string }
+
+const DAY_ABBR: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
+
+function parseScheduleDays(schedule: string | null): Set<number> {
+  if (!schedule) return new Set([1, 2, 3, 4, 5])
+  const clean = schedule.toLowerCase().replace(/[^a-z]/g, ' ').trim()
+  const parts = clean.split(/\s+/)
+  const start = DAY_ABBR[parts[0]?.slice(0, 3)]
+  const end = DAY_ABBR[parts[parts.length - 1]?.slice(0, 3)]
+  if (start === undefined || end === undefined) return new Set([1, 2, 3, 4, 5])
+  const days = new Set<number>()
+  if (start <= end) {
+    for (let d = start; d <= end; d++) days.add(d)
+  } else {
+    for (let d = start; d <= 6; d++) days.add(d)
+    for (let d = 0; d <= end; d++) days.add(d)
+  }
+  return days
+}
+
+function computeDayTag(
+  date: string,
+  hasEntry: boolean,
+  scheduleDays: Set<number>,
+  leaves: { start_date: string; end_date: string; leave_type: string | null; status: string }[],
+  overrides: TagOverride[],
+): DayTag {
+  const override = overrides.find(o => o.date === date)
+  if (override) return override.tag as DayTag
+  if (hasEntry) return 'worked'
+  const [y, m, d] = date.split('-').map(Number)
+  const dow = new Date(y, m - 1, d).getDay()
+  const leave = leaves.find(lr => lr.status === 'approved' && lr.start_date <= date && lr.end_date >= date)
+  if (leave) return leave.leave_type === 'unpaid' ? 'unpaid_leave' : 'paid_leave'
+  if (!scheduleDays.has(dow)) return 'off'
+  return 'missing'
+}
+
+const TAG_LABEL: Record<DayTag, string> = {
+  worked: 'Worked', off: 'Off', paid_leave: 'Paid Leave', unpaid_leave: 'Unpaid Leave', missing: 'Missing',
+}
+const TAG_COLOR: Record<DayTag, string> = {
+  worked: 'var(--green)', off: 'var(--text-muted)', paid_leave: 'var(--amber)', unpaid_leave: '#f97316', missing: 'var(--red)',
+}
+
 function utcToLAInput(iso: string): string {
   const d = new Date(iso)
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -152,6 +214,9 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [addSkipBreak, setAddSkipBreak] = useState(false)
   const [addSaving, setAddSaving] = useState(false)
   const [addError, setAddError] = useState('')
+  const [tagOverrides, setTagOverrides] = useState<TagOverride[]>([])
+  const [savingTag, setSavingTag] = useState<string | null>(null)
+  const [savingLeaveType, setSavingLeaveType] = useState<string | null>(null)
 
   async function saveEmpField(field: string, value: unknown) {
     setEmpSaving(true)
@@ -186,6 +251,13 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       .catch(() => null)
   }, [emp.id])
 
+  useEffect(() => {
+    fetch(`/api/admin/day-tag-overrides?employee_id=${emp.id}&from=${viewPeriodStart}&to=${viewPeriodEnd}`)
+      .then(r => r.json())
+      .then(data => setTagOverrides(Array.isArray(data) ? data : []))
+      .catch(() => null)
+  }, [emp.id, viewPeriodStart, viewPeriodEnd])
+
   async function addOtUnlock() {
     if (!otUnlockDate) return
     setOtUnlockSaving(true)
@@ -210,6 +282,44 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       body: JSON.stringify({ employee_id: emp.id, date }),
     })
     setOtUnlocks(prev => prev.filter(u => u.date !== date))
+  }
+
+  async function saveTagOverride(date: string, tag: string | null) {
+    setSavingTag(date)
+    try {
+      const res = await fetch('/api/admin/day-tag-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: emp.id, date, tag }),
+      })
+      if (res.ok) {
+        if (tag === null) {
+          setTagOverrides(prev => prev.filter(o => o.date !== date))
+        } else {
+          setTagOverrides(prev => {
+            const existing = prev.find(o => o.date === date)
+            if (existing) return prev.map(o => o.date === date ? { ...o, tag } : o)
+            return [...prev, { id: '', date, tag }]
+          })
+        }
+      }
+    } catch { /* ignore */ }
+    setSavingTag(null)
+  }
+
+  async function saveLeaveType(leaveId: string, leave_type: string) {
+    setSavingLeaveType(leaveId)
+    try {
+      const res = await fetch(`/api/admin/leave/${leaveId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leave_type }),
+      })
+      if (res.ok) {
+        setLeaveRequests(prev => prev.map(r => r.id === leaveId ? { ...r, leave_type } : r))
+      }
+    } catch { /* ignore */ }
+    setSavingLeaveType(null)
   }
 
   async function fetchPeriod(from: string, to: string) {
@@ -677,40 +787,87 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Missing</th><th>Note</th><th></th>
+                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th></th>
                 </tr>
               </thead>
               <tbody>
-                {entries.length === 0
-                  ? <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No time entries this period.</td></tr>
-                  : entries.map(e => {
-                    const ot = e.total_hours != null ? Math.max(0, e.total_hours - 8) : 0
-                    const hasPaidPto = leaveRequests.some(lr =>
-                      lr.status === 'approved' && lr.leave_type !== 'unpaid' &&
-                      lr.start_date <= e.date && lr.end_date >= e.date
-                    )
-                    const cappedH = Math.min(e.total_hours ?? 0, 8)
-                    const missing = hasPaidPto ? 0 : Math.max(0, 8 - cappedH)
+                {(() => {
+                  const allDays = genDays(viewPeriodStart, viewPeriodEnd)
+                  if (allDays.length === 0) return (
+                    <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No days in this period.</td></tr>
+                  )
+                  const scheduleDays = parseScheduleDays(emp.shift_schedule)
+                  return allDays.map(date => {
+                    const entry = entries.find(e => e.date === date)
+                    const tag = computeDayTag(date, !!entry, scheduleDays, leaveRequests, tagOverrides)
+                    const leave = leaveRequests.find(r => r.status === 'approved' && r.start_date <= date && r.end_date >= date)
+                    const ot = entry?.total_hours != null ? Math.max(0, entry.total_hours - 8) : 0
                     return (
-                      <tr key={e.id}>
-                        <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
-                        <td style={{ fontSize: 12.5 }}>{e.clock_in ? fmtTime(e.clock_in) : '—'}</td>
-                        <td style={{ fontSize: 12.5 }}>{e.clock_out ? fmtTime(e.clock_out) : <span className="badge badge-amber">Missing</span>}</td>
-                        <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (e.total_hours ?? 0) > 8 ? 'var(--amber)' : 'var(--text-primary)' }}>{fmtH(e.total_hours)}</td>
-                        <td style={{ fontVariantNumeric: 'tabular-nums', color: ot > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: ot > 0 ? 600 : 400 }}>{ot > 0 ? `+${fmtH(ot)}` : '—'}</td>
-                        <td style={{ fontVariantNumeric: 'tabular-nums', color: missing > 0 ? 'var(--red)' : hasPaidPto ? 'var(--green)' : 'var(--text-muted)', fontWeight: missing > 0 ? 600 : 400, fontSize: 12.5 }}>
-                          {missing > 0 ? fmtH(missing) : hasPaidPto ? 'PTO' : '—'}
+                      <tr key={date}>
+                        <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                          {fmtDate(date)}
+                          <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 5 }}>{dayLabel(date)}</span>
                         </td>
-                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{e.is_edited ? 'edited' : '—'}</td>
                         <td>
-                          <button
-                            onClick={() => openEdit(e)}
-                            style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}
-                          >Edit</button>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: 11, fontWeight: 600, color: '#fff', background: TAG_COLOR[tag], borderRadius: 4, padding: '2px 7px', whiteSpace: 'nowrap' }}>
+                              {TAG_LABEL[tag]}
+                            </span>
+                            {tag !== 'worked' && (
+                              <select
+                                value=""
+                                disabled={savingTag === date}
+                                onChange={async ev => {
+                                  const val = ev.target.value
+                                  if (!val) return
+                                  await saveTagOverride(date, val === 'remove' ? null : val)
+                                }}
+                                style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer' }}
+                              >
+                                <option value="">change…</option>
+                                {(['off', 'paid_leave', 'unpaid_leave', 'missing'] as const).map(t => (
+                                  <option key={t} value={t}>{TAG_LABEL[t]}</option>
+                                ))}
+                                {tagOverrides.some(o => o.date === date) && <option value="remove">↩ Remove override</option>}
+                              </select>
+                            )}
+                            {(tag === 'paid_leave' || tag === 'unpaid_leave') && leave && (
+                              <select
+                                value={leave.leave_type ?? 'pto'}
+                                disabled={savingLeaveType === leave.id}
+                                onChange={async ev => { await saveLeaveType(leave.id, ev.target.value) }}
+                                style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 4, padding: '2px 4px', background: 'var(--surface)', color: 'var(--text-primary)' }}
+                              >
+                                {[['pto', 'Paid'], ['unpaid', 'Unpaid TO'], ['sick', 'Sick'], ['holiday', 'Holiday Adj.'], ['emergency', 'Emergency']].map(([v, l]) => (
+                                  <option key={v} value={v}>{l}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ fontSize: 12.5 }}>{entry?.clock_in ? fmtTime(entry.clock_in) : '—'}</td>
+                        <td style={{ fontSize: 12.5 }}>
+                          {entry ? (entry.clock_out ? fmtTime(entry.clock_out) : <span className="badge badge-amber">Missing</span>) : '—'}
+                        </td>
+                        <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: (entry?.total_hours ?? 0) > 8 ? 'var(--amber)' : 'var(--text-primary)' }}>
+                          {fmtH(entry?.total_hours ?? null)}
+                        </td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums', color: ot > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: ot > 0 ? 600 : 400 }}>
+                          {ot > 0 ? `+${fmtH(ot)}` : '—'}
+                        </td>
+                        <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{entry?.is_edited ? 'edited' : '—'}</td>
+                        <td>
+                          {entry && (
+                            <button
+                              onClick={() => openEdit(entry)}
+                              style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 600 }}
+                            >Edit</button>
+                          )}
                         </td>
                       </tr>
                     )
-                  })}
+                  })
+                })()}
               </tbody>
             </table>
           </div>
