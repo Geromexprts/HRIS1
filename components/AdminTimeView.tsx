@@ -6,7 +6,7 @@ import Link from 'next/link'
 
 const LA_TZ = 'America/Los_Angeles'
 
-type Employee = { id: string; name: string; work_email: string; role: string }
+type Employee = { id: string; name: string; work_email: string; role: string; shift_schedule: string | null }
 type TimeEntry = {
   id: string; employee_id: string; date: string
   clock_in: string | null; clock_out: string | null
@@ -50,6 +50,65 @@ function isLate(ci: string) {
   const t = new Date(ci).toLocaleTimeString('en-US', { timeZone: LA_TZ, hour: '2-digit', minute: '2-digit', hour12: false })
   const [h, m] = t.split(':').map(Number)
   return h > 9 || (h === 9 && m > 30)
+}
+
+// ── Schedule / day-tag helpers ────────────────────────────────────────────────
+
+type DayTag = 'worked' | 'off' | 'paid_leave' | 'unpaid_leave' | 'missing'
+type TagOverride = { id: string; date: string; tag: string }
+type LeaveRow = { id: string; employee_id: string; start_date: string; end_date: string; leave_type: string | null; status: string; days_requested: number }
+
+const DAY_ABBR: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 }
+
+function parseScheduleDays(schedule: string | null): Set<number> {
+  if (!schedule) return new Set([1, 2, 3, 4, 5])
+  const clean = schedule.toLowerCase().replace(/[^a-z]/g, ' ').trim()
+  const parts = clean.split(/\s+/)
+  const start = DAY_ABBR[parts[0]?.slice(0, 3)]
+  const end = DAY_ABBR[parts[parts.length - 1]?.slice(0, 3)]
+  if (start === undefined || end === undefined) return new Set([1, 2, 3, 4, 5])
+  const days = new Set<number>()
+  if (start <= end) {
+    for (let d = start; d <= end; d++) days.add(d)
+  } else {
+    for (let d = start; d <= 6; d++) days.add(d)
+    for (let d = 0; d <= end; d++) days.add(d)
+  }
+  return days
+}
+
+function computeDayTag(
+  date: string,
+  hasEntry: boolean,
+  scheduleDays: Set<number>,
+  leaves: LeaveRow[],
+  overrides: TagOverride[],
+): DayTag {
+  const override = overrides.find(o => o.date === date)
+  if (override) return override.tag as DayTag
+  if (hasEntry) return 'worked'
+  const [y, m, d] = date.split('-').map(Number)
+  const dow = new Date(y, m - 1, d).getDay()
+  const leave = leaves.find(lr => lr.status === 'approved' && lr.start_date <= date && lr.end_date >= date)
+  if (leave) return leave.leave_type === 'unpaid' ? 'unpaid_leave' : 'paid_leave'
+  if (!scheduleDays.has(dow)) return 'off'
+  return 'missing'
+}
+
+const TAG_LABEL: Record<DayTag, string> = {
+  worked: 'Worked',
+  off: 'Off',
+  paid_leave: 'Paid Leave',
+  unpaid_leave: 'Unpaid Leave',
+  missing: 'Missing',
+}
+
+const TAG_COLOR: Record<DayTag, string> = {
+  worked: 'var(--green)',
+  off: 'var(--text-muted)',
+  paid_leave: 'var(--amber)',
+  unpaid_leave: '#f97316',
+  missing: 'var(--red)',
 }
 
 function fmtH(h: number | null) {
@@ -301,7 +360,7 @@ function StatusBadge({ entry, today, nowMs }: { entry?: TimeEntry; today: string
 
 // ── AdminTimeView ─────────────────────────────────────────────────────────────
 
-type LeaveRow = { employee_id: string; start_date: string; end_date: string; leave_type: string | null; status: string; days_requested: number }
+// LeaveRow defined above in helpers
 
 export function AdminTimeView({ employees, entries, edits, today, yesterday, weekStart, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtMap = {}, ptoPaidMap = {}, ptoUnpaidMap = {}, allLeaveRequests = [] }: {
   employees: Employee[]
@@ -330,6 +389,10 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   const [refreshing, setRefreshing] = useState(false)
   const [viewFrom, setViewFrom] = useState(periodStart)
   const [viewTo, setViewTo] = useState(periodEnd)
+  const [tagOverrides, setTagOverrides] = useState<TagOverride[]>([])
+  const [savingTag, setSavingTag] = useState<string | null>(null)
+  const [localLeaveRequests, setLocalLeaveRequests] = useState<LeaveRow[]>(allLeaveRequests)
+  const [savingLeaveType, setSavingLeaveType] = useState<string | null>(null)
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 30000)
@@ -337,6 +400,15 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
   }, [])
 
   useEffect(() => { setAllEntries(entries) }, [entries])
+  useEffect(() => { setLocalLeaveRequests(allLeaveRequests) }, [allLeaveRequests])
+
+  useEffect(() => {
+    if (!monthEntriesEmp) { setTagOverrides([]); return }
+    fetch(`/api/admin/day-tag-overrides?employee_id=${monthEntriesEmp.id}&from=${viewFrom}&to=${viewTo}`)
+      .then(r => r.json())
+      .then(data => setTagOverrides(Array.isArray(data) ? data : []))
+      .catch(() => setTagOverrides([]))
+  }, [monthEntriesEmp, viewFrom, viewTo])
 
   const empMap = Object.fromEntries(employees.map(e => [e.id, e]))
 
@@ -1025,63 +1097,125 @@ export function AdminTimeView({ employees, entries, edits, today, yesterday, wee
       )}
 
       {monthEntriesEmp && (() => {
-        const empLeaves = allLeaveRequests.filter(lr => lr.employee_id === monthEntriesEmp.id)
-        // Build leave coverage map for this employee in the view period
-        const paidPtoDateSet = new Set<string>()
-        for (const lr of empLeaves) {
-          if (lr.status === 'approved' && lr.leave_type !== 'unpaid') {
-            const days = genDays(lr.start_date > viewFrom ? lr.start_date : viewFrom, lr.end_date < viewTo ? lr.end_date : viewTo)
-            days.forEach(d => paidPtoDateSet.add(d))
+        const empLeaves = localLeaveRequests.filter(lr => lr.employee_id === monthEntriesEmp.id)
+        const scheduleDays = parseScheduleDays(monthEntriesEmp.shift_schedule)
+        const allDays = genDays(viewFrom, viewTo)
+
+        async function saveTagOverride(date: string, tag: DayTag | null) {
+          setSavingTag(date)
+          await fetch('/api/admin/day-tag-overrides', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ employee_id: monthEntriesEmp!.id, date, tag }),
+          })
+          if (tag === null) {
+            setTagOverrides(prev => prev.filter(o => o.date !== date))
+          } else {
+            setTagOverrides(prev => [...prev.filter(o => o.date !== date), { id: '', date, tag }])
           }
+          setSavingTag(null)
         }
-        const empEntries = periodDays
-          .map(d => byEmpDate[monthEntriesEmp.id]?.[d])
-          .filter((e): e is TimeEntry => !!e)
+
+        async function saveLeaveType(leaveId: string, leave_type: string) {
+          setSavingLeaveType(leaveId)
+          const res = await fetch(`/api/admin/leave/${leaveId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ leave_type }),
+          })
+          if (res.ok) {
+            setLocalLeaveRequests(prev => prev.map(lr => lr.id === leaveId ? { ...lr, leave_type } : lr))
+          }
+          setSavingLeaveType(null)
+        }
+
         return (
           <div className="modal-overlay">
-            <div className="modal" style={{ maxWidth: 580 }}>
+            <div className="modal" style={{ maxWidth: 640 }}>
               <div className="modal-title">{monthEntriesEmp.name}</div>
-              <div className="modal-sub">{viewFrom} → {viewTo} · Click Edit on any entry to modify it.</div>
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <div className="modal-sub">{viewFrom} → {viewTo} · All dates shown. Tags auto-computed; override with the dropdown.</div>
+              <div style={{ maxHeight: 460, overflowY: 'auto' }}>
                 <table className="data-table" style={{ width: '100%' }}>
                   <thead>
                     <tr>
                       <th>Date</th>
+                      <th>Tag</th>
                       <th>Clock In</th>
                       <th>Clock Out</th>
                       <th>Hours</th>
-                      <th>Missing</th>
                       <th></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {empEntries.length === 0
-                      ? <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px 0' }}>No entries this period.</td></tr>
-                      : empEntries.map(e => {
-                        const cappedH = Math.min(e.total_hours ?? 0, 8)
-                        const hasPaidPto = paidPtoDateSet.has(e.date)
-                        const missing = hasPaidPto ? 0 : Math.max(0, 8 - cappedH)
-                        return (
-                          <tr key={e.id}>
-                            <td style={{ fontSize: 12.5 }}>{fmtDate(e.date)}</td>
-                            <td style={{ fontSize: 12.5 }}>{e.clock_in ? laTime(e.clock_in) : '—'}</td>
-                            <td style={{ fontSize: 12.5 }}>{e.clock_out ? laTime(e.clock_out) : '—'}</td>
-                            <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{fmtH(e.total_hours)}</td>
-                            <td style={{ fontVariantNumeric: 'tabular-nums', color: missing > 0 ? 'var(--red)' : 'var(--text-muted)', fontWeight: missing > 0 ? 600 : 400, fontSize: 12.5 }}>
-                              {missing > 0 ? fmtH(missing) : '—'}
-                            </td>
-                            <td>
+                    {allDays.map(date => {
+                      const entry = byEmpDate[monthEntriesEmp.id]?.[date]
+                      const tag = computeDayTag(date, !!entry, scheduleDays, empLeaves, tagOverrides)
+                      const hasOverride = tagOverrides.some(o => o.date === date)
+                      const coveringLeave = empLeaves.find(lr => lr.status === 'approved' && lr.start_date <= date && lr.end_date >= date)
+                      const isSaving = savingTag === date
+
+                      return (
+                        <tr key={date} style={{ opacity: isSaving ? 0.5 : 1 }}>
+                          <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
+                            <span style={{ fontWeight: 500 }}>{fmtDate(date)}</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 11, marginLeft: 4 }}>{dayLabel(date)}</span>
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: TAG_COLOR[tag], background: TAG_COLOR[tag] + '18', padding: '2px 7px', borderRadius: 5, textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                                {TAG_LABEL[tag]}
+                              </span>
+                              {hasOverride && (
+                                <button onClick={() => saveTagOverride(date, null)} title="Remove override" style={{ fontSize: 10, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                              )}
+                              {tag !== 'worked' && (
+                                <select
+                                  value=""
+                                  disabled={isSaving}
+                                  onChange={e => { if (e.target.value) saveTagOverride(date, e.target.value as DayTag) }}
+                                  style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 5, padding: '1px 4px', background: 'var(--surface)', color: 'var(--text-muted)', cursor: 'pointer' }}
+                                >
+                                  <option value="">change…</option>
+                                  {(['off', 'paid_leave', 'unpaid_leave', 'missing'] as DayTag[]).filter(t => t !== tag).map(t => (
+                                    <option key={t} value={t}>{TAG_LABEL[t]}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                            {(tag === 'paid_leave' || tag === 'unpaid_leave') && coveringLeave && (
+                              <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Type:</span>
+                                <select
+                                  value={coveringLeave.leave_type ?? 'pto'}
+                                  disabled={savingLeaveType === coveringLeave.id}
+                                  onChange={e => saveLeaveType(coveringLeave.id, e.target.value)}
+                                  style={{ fontSize: 11, border: '1px solid var(--border)', borderRadius: 5, padding: '1px 4px', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}
+                                >
+                                  <option value="pto">Paid</option>
+                                  <option value="unpaid">Unpaid TO</option>
+                                  <option value="sick">Sick Leave</option>
+                                  <option value="holiday">Holiday Adj.</option>
+                                  <option value="emergency">Emergency</option>
+                                </select>
+                              </div>
+                            )}
+                          </td>
+                          <td style={{ fontSize: 12.5 }}>{entry?.clock_in ? laTime(entry.clock_in) : '—'}</td>
+                          <td style={{ fontSize: 12.5 }}>{entry?.clock_out ? laTime(entry.clock_out) : '—'}</td>
+                          <td style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{entry ? fmtH(entry.total_hours) : '—'}</td>
+                          <td>
+                            {entry && (
                               <button
-                                onClick={() => { setEditingEntry(e); setMonthEntriesEmp(null) }}
+                                onClick={() => { setEditingEntry(entry); setMonthEntriesEmp(null) }}
                                 style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
                               >
                                 Edit
                               </button>
-                            </td>
-                          </tr>
-                        )
-                      })
-                    }
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>

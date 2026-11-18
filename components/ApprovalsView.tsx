@@ -278,6 +278,7 @@ export function ApprovalsView({ employees, initialRequests, initialOtRequests = 
 }) {
   const [view, setView] = useState<'leave' | 'ot'>('leave')
   const [requests, setRequests] = useState(initialRequests)
+  const [savingLeaveType, setSavingLeaveType] = useState<string | null>(null)
   const [otRequests, setOtRequests] = useState(initialOtRequests)
   const [reviewing, setReviewing] = useState<LeaveRequest | null>(null)
   const [reviewingOt, setReviewingOt] = useState<OtRequest | null>(null)
@@ -577,9 +578,28 @@ export function ApprovalsView({ employees, initialRequests, initialOtRequests = 
                           )}
                           <td style={{ fontWeight: 500, color: 'var(--text-primary)' }}>{empMap[r.employee_id]?.name ?? '—'}</td>
                           <td>
-                            <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 4, fontWeight: 700, background: `${LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? '#6366f1'}18`, color: LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
-                              {leaveTypeLabel(r.leave_type ?? 'pto')}
-                            </span>
+                            <select
+                              value={r.leave_type ?? 'pto'}
+                              disabled={savingLeaveType === r.id}
+                              onChange={async e => {
+                                const leave_type = e.target.value
+                                setSavingLeaveType(r.id)
+                                const res = await fetch(`/api/admin/leave/${r.id}`, {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ leave_type }),
+                                })
+                                if (res.ok) setRequests(prev => prev.map(x => x.id === r.id ? { ...x, leave_type } : x))
+                                setSavingLeaveType(null)
+                              }}
+                              style={{ fontSize: 11, fontWeight: 700, border: '1px solid var(--border)', borderRadius: 5, padding: '2px 6px', background: `${LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? '#6366f1'}18`, color: LEAVE_TYPE_COLOR[r.leave_type ?? 'pto'] ?? 'var(--accent)', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.04em' }}
+                            >
+                              <option value="pto">Paid</option>
+                              <option value="unpaid">Unpaid TO</option>
+                              <option value="sick">Sick Leave</option>
+                              <option value="holiday">Holiday Adj.</option>
+                              <option value="emergency">Emergency</option>
+                            </select>
                           </td>
                           <td style={{ fontSize: 12.5 }}>
                             {fmt(r.start_date)}{r.start_date !== r.end_date ? ` → ${fmt(r.end_date)}` : ''}

@@ -44,11 +44,11 @@ export default async function AdminTimePage() {
     { data: approvedOt },
     { data: leaveData },
   ] = await Promise.all([
-    supabaseAdmin.from('employees').select('id, name, work_email, role').eq('status', 'active').order('name'),
+    supabaseAdmin.from('employees').select('id, name, work_email, role, shift_schedule').eq('status', 'active').order('name'),
     supabaseAdmin.from('time_entries').select('*').gte('date', fetchFrom).lte('date', today).order('date', { ascending: false }),
     supabaseAdmin.from('audit_log').select('*').eq('action', 'time_entry_edited').order('performed_at', { ascending: false }).limit(100),
     supabaseAdmin.from('ot_requests').select('employee_id, date, ot_hours').eq('status', 'approved').gte('date', periodStart).lte('date', periodEnd),
-    supabaseAdmin.from('leave_requests').select('employee_id, start_date, end_date, days_requested, leave_type, status').gte('start_date', prevPeriodStart).lte('end_date', periodEnd),
+    supabaseAdmin.from('leave_requests').select('id, employee_id, start_date, end_date, days_requested, leave_type, status').gte('start_date', prevPeriodStart).lte('end_date', periodEnd),
   ])
 
   // Build approved OT map: employee_id → total approved OT hours this period
@@ -71,7 +71,7 @@ export default async function AdminTimePage() {
   }
 
   // Full leave request list for per-date missing hours calculation in detail views
-  type LeaveRow = { employee_id: string; start_date: string; end_date: string; leave_type: string | null; status: string; days_requested: number }
+  type LeaveRow = { id: string; employee_id: string; start_date: string; end_date: string; leave_type: string | null; status: string; days_requested: number }
   const allLeaveRequests: LeaveRow[] = (leaveData ?? []) as LeaveRow[]
 
   return (
