@@ -47,11 +47,12 @@ function laInputToUTC(localStr: string): string {
 }
 
 function isLocked(dateStr: string) {
-  const today = new Date()
-  if (today.getDate() < 25) return false
+  const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: LA_TZ }).format(new Date())
+  const [ty, tm, td] = todayLA.split('-').map(Number)
+  if (td < 25) return false
   const entry = new Date(dateStr + 'T12:00:00')
-  const periodStart = new Date(today.getFullYear(), today.getMonth() - 1, 26)
-  const periodEnd = new Date(today.getFullYear(), today.getMonth(), 25)
+  const periodStart = new Date(ty, tm - 2, 26)
+  const periodEnd = new Date(ty, tm - 1, 25)
   return entry >= periodStart && entry <= periodEnd
 }
 
@@ -186,6 +187,11 @@ function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtR
           <div>
             <label className="field-label">Date</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)} max={todayLA} className="field-input" />
+            {date < todayLA && (
+              <p style={{ fontSize: 11.5, color: 'var(--amber)', marginTop: 4 }}>
+                Past date — this requires admin unlock. If you haven&apos;t been granted access for this day, submission will fail.
+              </p>
+            )}
           </div>
           <div>
             <label className="field-label">
