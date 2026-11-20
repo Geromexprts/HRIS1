@@ -191,6 +191,12 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [otUnlockDate, setOtUnlockDate] = useState('')
   const [otUnlockSaving, setOtUnlockSaving] = useState(false)
   const [otUnlockError, setOtUnlockError] = useState('')
+  const [fileOtDate, setFileOtDate] = useState('')
+  const [fileOtHours, setFileOtHours] = useState('')
+  const [fileOtReason, setFileOtReason] = useState('')
+  const [fileOtSaving, setFileOtSaving] = useState(false)
+  const [fileOtError, setFileOtError] = useState('')
+  const [fileOtSuccess, setFileOtSuccess] = useState('')
   const [entries, setEntries] = useState<TimeEntry[]>(timeEntries)
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>(initialLeaveRequests)
   const [viewPeriodStart, setViewPeriodStart] = useState(periodStart)
@@ -282,6 +288,29 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       body: JSON.stringify({ employee_id: emp.id, date }),
     })
     setOtUnlocks(prev => prev.filter(u => u.date !== date))
+  }
+
+  async function fileOtOnBehalf() {
+    if (!fileOtDate || !fileOtHours) return
+    setFileOtSaving(true)
+    setFileOtError('')
+    setFileOtSuccess('')
+    try {
+      const res = await fetch('/api/admin/ot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: emp.id, date: fileOtDate, ot_hours: parseFloat(fileOtHours), reason: fileOtReason || null }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setFileOtError(d.error ?? 'Failed') }
+      else {
+        setFileOtSuccess(`${fileOtHours}h OT filed for ${fileOtDate} and auto-approved.`)
+        setFileOtDate('')
+        setFileOtHours('')
+        setFileOtReason('')
+      }
+    } catch { setFileOtError('Network error') }
+    setFileOtSaving(false)
   }
 
   async function saveTagOverride(date: string, tag: string | null) {
@@ -743,6 +772,58 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                 ))}
               </div>
             )}
+          </div>
+          {/* File OT on behalf */}
+          <div className="card">
+            <div className="card-title" style={{ marginBottom: 4 }}>File OT on Behalf</div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+              Submit and auto-approve an overtime request for this employee. Use this when the team member was unable to file it themselves.
+            </p>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>Date</label>
+                <input
+                  type="date"
+                  value={fileOtDate}
+                  onChange={e => { setFileOtDate(e.target.value); setFileOtError(''); setFileOtSuccess('') }}
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>OT Hours</label>
+                <select
+                  value={fileOtHours}
+                  onChange={e => { setFileOtHours(e.target.value); setFileOtError(''); setFileOtSuccess('') }}
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', cursor: 'pointer' }}
+                >
+                  <option value="">— hrs —</option>
+                  {[0.5,1,1.5,2,2.5,3,3.5,4,4.5,5,5.5,6,6.5,7,7.5,8].map(h => (
+                    <option key={h} value={h}>{h}h</option>
+                  ))}
+                </select>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 160 }}>
+                <label style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>Reason (optional)</label>
+                <input
+                  type="text"
+                  value={fileOtReason}
+                  onChange={e => setFileOtReason(e.target.value)}
+                  placeholder="e.g. client event"
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', paddingTop: 20 }}>
+                <button
+                  disabled={!fileOtDate || !fileOtHours || fileOtSaving}
+                  onClick={fileOtOnBehalf}
+                  style={{ fontSize: 12, padding: '5px 14px', borderRadius: 5, border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', fontWeight: 600, opacity: !fileOtDate || !fileOtHours ? 0.5 : 1, whiteSpace: 'nowrap' }}
+                >
+                  {fileOtSaving ? 'Filing…' : 'File OT'}
+                </button>
+              </div>
+            </div>
+            {fileOtError && <p style={{ fontSize: 12, color: 'var(--red)', marginTop: 8 }}>{fileOtError}</p>}
+            {fileOtSuccess && <p style={{ fontSize: 12, color: 'var(--green)', marginTop: 8 }}>{fileOtSuccess}</p>}
           </div>
           <div style={{ display: 'flex', gap: 12 }}>
             <Link href="/dashboard/admin/employees" style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>← All Employees</Link>

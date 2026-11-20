@@ -34,6 +34,57 @@ export async function GET() {
   return NextResponse.json(data)
 }
 
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions)
+  if (!adminOrApprover(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+
+  const { employee_id, date, ot_hours: rawHours, reason } = await req.json()
+  if (!employee_id || !date || !rawHours) {
+    return NextResponse.json({ error: 'employee_id, date, and ot_hours are required' }, { status: 400 })
+  }
+
+  const ot_hours = Math.round(parseFloat(rawHours) * 100) / 100
+  if (ot_hours <= 0 || ot_hours > 10) {
+    return NextResponse.json({ error: 'OT hours must be between 0.5 and 10' }, { status: 400 })
+  }
+
+  const { data: existing } = await supabaseAdmin
+    .from('ot_requests')
+    .select('id')
+    .eq('employee_id', employee_id)
+    .eq('date', date)
+    .maybeSingle()
+
+  if (existing) {
+    return NextResponse.json({ error: 'An OT request already exists for this date' }, { status: 409 })
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('ot_requests')
+    .insert({
+      employee_id,
+      date,
+      ot_hours,
+      reason: reason || null,
+      status: 'approved',
+      reviewed_by: session!.user.email,
+      reviewed_at: new Date().toISOString(),
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await supabaseAdmin.from('audit_log').insert({
+    employee_id,
+    action: 'admin_filed_ot',
+    performed_by: session!.user.email,
+    details: `Admin filed ${ot_hours}h OT for ${date}${reason ? `: ${reason}` : ''}`,
+  })
+
+  return NextResponse.json(data)
+}
+
 export async function PUT(req: Request) {
   const session = await getServerSession(authOptions)
   if (!adminOrApprover(session)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
