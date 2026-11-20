@@ -191,6 +191,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [otUnlockDate, setOtUnlockDate] = useState('')
   const [otUnlockSaving, setOtUnlockSaving] = useState(false)
   const [otUnlockError, setOtUnlockError] = useState('')
+  const [savingUnlockDate, setSavingUnlockDate] = useState<string | null>(null)
   const [fileOtDate, setFileOtDate] = useState('')
   const [fileOtHours, setFileOtHours] = useState('')
   const [fileOtReason, setFileOtReason] = useState('')
@@ -288,6 +289,20 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       body: JSON.stringify({ employee_id: emp.id, date }),
     })
     setOtUnlocks(prev => prev.filter(u => u.date !== date))
+  }
+
+  async function unlockOtDate(date: string) {
+    setSavingUnlockDate(date)
+    try {
+      const res = await fetch('/api/admin/ot-unlock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ employee_id: emp.id, date }),
+      })
+      const d = await res.json()
+      if (res.ok) setOtUnlocks(prev => [...prev.filter(u => u.date !== d.date), d])
+    } catch { }
+    setSavingUnlockDate(null)
   }
 
   async function fileOtOnBehalf() {
@@ -868,14 +883,14 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th></th>
+                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th>OT Filing</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {(() => {
                   const allDays = genDays(viewPeriodStart, viewPeriodEnd)
                   if (allDays.length === 0) return (
-                    <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No days in this period.</td></tr>
+                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No days in this period.</td></tr>
                   )
                   const scheduleDays = parseScheduleDays(emp.shift_schedule)
                   return allDays.map(date => {
@@ -937,6 +952,26 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                           {ot > 0 ? `+${fmtH(ot)}` : '—'}
                         </td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{entry?.is_edited ? 'edited' : '—'}</td>
+                        <td>
+                          {(() => {
+                            const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date())
+                            if (date >= todayLA) return null
+                            const unlock = otUnlocks.find(u => u.date === date)
+                            if (unlock) return (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 6px 2px 8px', borderRadius: 20, border: '1px solid var(--border)', background: 'color-mix(in srgb, var(--amber) 10%, var(--surface))', whiteSpace: 'nowrap' }}>
+                                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>OT unlocked</span>
+                                <button onClick={() => revokeOtUnlock(date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, padding: '0 2px', lineHeight: 1 }} title="Revoke">✕</button>
+                              </div>
+                            )
+                            return (
+                              <button
+                                disabled={savingUnlockDate === date}
+                                onClick={() => unlockOtDate(date)}
+                                style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
+                              >{savingUnlockDate === date ? '…' : 'Unlock OT'}</button>
+                            )
+                          })()}
+                        </td>
                         <td>
                           {entry && (
                             <button
