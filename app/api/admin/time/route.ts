@@ -17,11 +17,11 @@ export async function GET(req: NextRequest) {
   const [{ data: entries }, { data: leaves }, { data: otRows }] = await Promise.all([
     supabaseAdmin.from('time_entries').select('*').eq('employee_id', employee_id).gte('date', from).lte('date', to).order('date', { ascending: false }),
     supabaseAdmin.from('leave_requests').select('id, leave_type, start_date, end_date, days_requested, status, created_at, reason, is_half_day, approver_note, reviewed_by').eq('employee_id', employee_id).lte('start_date', to).gte('end_date', from),
-    supabaseAdmin.from('ot_requests').select('ot_hours').eq('employee_id', employee_id).eq('status', 'approved').gte('date', from).lte('date', to),
+    supabaseAdmin.from('ot_requests').select('date, ot_hours, status').eq('employee_id', employee_id).gte('date', from).lte('date', to),
   ])
 
-  const approvedOtHours = Math.round((otRows ?? []).reduce((s, r) => s + (r.ot_hours ?? 0), 0) * 100) / 100
-  return NextResponse.json({ entries: entries ?? [], leaveRequests: leaves ?? [], approvedOtHours })
+  const approvedOtHours = Math.round((otRows ?? []).filter(r => r.status === 'approved').reduce((s, r) => s + (r.ot_hours ?? 0), 0) * 100) / 100
+  return NextResponse.json({ entries: entries ?? [], leaveRequests: leaves ?? [], approvedOtHours, otRequests: otRows ?? [] })
 }
 
 function calcTotalHours(clockIn: string, clockOut: string, skipBreak = false) {

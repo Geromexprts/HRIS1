@@ -206,6 +206,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [viewApprovedOtHours, setViewApprovedOtHours] = useState(approvedOtHours)
+  const [otRequests, setOtRequests] = useState<{ date: string; ot_hours: number; status: string }[]>([])
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editClockIn, setEditClockIn] = useState('')
   const [editClockOut, setEditClockOut] = useState('')
@@ -376,6 +377,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
         setEntries(d.entries ?? [])
         setLeaveRequests(d.leaveRequests ?? [])
         setViewApprovedOtHours(d.approvedOtHours ?? 0)
+        setOtRequests(d.otRequests ?? [])
         setViewPeriodStart(from)
         setViewPeriodEnd(to)
       }
@@ -883,7 +885,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th>Unlock (Edit + OT)</th><th></th>
+                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Approved OT</th><th>Note</th><th>Unlock (Edit + OT)</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -950,6 +952,14 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                         </td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: ot > 0 ? 'var(--amber)' : 'var(--text-muted)', fontWeight: ot > 0 ? 600 : 400 }}>
                           {ot > 0 ? `+${fmtH(ot)}` : '—'}
+                        </td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                          {(() => {
+                            const otReq = otRequests.find(r => r.date === date)
+                            if (!otReq) return <span style={{ color: 'var(--text-muted)' }}>—</span>
+                            const color = otReq.status === 'approved' ? 'var(--green)' : otReq.status === 'denied' ? 'var(--red)' : 'var(--amber)'
+                            return <span style={{ fontWeight: 600, color }}>{otReq.ot_hours}h <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>({otReq.status})</span></span>
+                          })()}
                         </td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{entry?.is_edited ? 'edited' : '—'}</td>
                         <td>
