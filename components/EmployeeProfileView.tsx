@@ -757,9 +757,9 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
           </div>
           {/* OT Date Unlocks */}
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 4 }}>OT Past-Date Unlocks</div>
+            <div className="card-title" style={{ marginBottom: 4 }}>Past-Date Edit & OT Unlocks</div>
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-              Allow this employee to file overtime for a specific past date. Unlocks are one-time — they can be revoked once used.
+              Allow this employee to edit their time entry and file overtime for a specific past date. One unlock grants both. Unlocks are one-time — they expire once used.
             </p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: otUnlocks.length > 0 ? 12 : 0 }}>
               <input
@@ -883,7 +883,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th>OT Filing</th><th></th>
+                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Note</th><th>Unlock (Edit + OT)</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -959,7 +959,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                             const unlock = otUnlocks.find(u => u.date === date)
                             if (unlock) return (
                               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, padding: '2px 6px 2px 8px', borderRadius: 20, border: '1px solid var(--border)', background: 'color-mix(in srgb, var(--amber) 10%, var(--surface))', whiteSpace: 'nowrap' }}>
-                                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>OT unlocked</span>
+                                <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>Edit & OT unlocked</span>
                                 <button onClick={() => revokeOtUnlock(date)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 11, padding: '0 2px', lineHeight: 1 }} title="Revoke">✕</button>
                               </div>
                             )
@@ -968,7 +968,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                                 disabled={savingUnlockDate === date}
                                 onClick={() => unlockOtDate(date)}
                                 style={{ fontSize: 11, padding: '3px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--accent)', cursor: 'pointer', fontWeight: 500, whiteSpace: 'nowrap' }}
-                              >{savingUnlockDate === date ? '…' : 'Unlock OT'}</button>
+                              >{savingUnlockDate === date ? '…' : 'Unlock Edit & OT'}</button>
                             )
                           })()}
                         </td>
