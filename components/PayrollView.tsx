@@ -617,7 +617,8 @@ export function PayrollView({
             Export CSV
           </button>
         </div>
-        <div className="table-wrap">
+        <div style={{ overflowY: 'auto', maxHeight: 'calc(100vh - 340px)' }}>
+          <div className="table-wrap">
           <table className="data-table">
             <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)' }}>
               {/* Column group labels */}
@@ -889,6 +890,7 @@ export function PayrollView({
                 })}
             </tbody>
           </table>
+          </div>
         </div>
       </div>
     </div>
