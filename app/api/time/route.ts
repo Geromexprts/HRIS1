@@ -129,6 +129,21 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'This pay period is locked and cannot be edited.' }, { status: 403 })
   }
 
+  // Past-date edits require admin unlock (same table as OT unlocks)
+  const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date())
+  if (existing.date < todayLA) {
+    const { data: unlock } = await supabaseAdmin
+      .from('ot_date_unlocks')
+      .select('id')
+      .eq('employee_id', session.user.id)
+      .eq('date', existing.date)
+      .maybeSingle()
+
+    if (!unlock) {
+      return NextResponse.json({ error: 'Editing past time entries requires admin approval. Please contact your manager.' }, { status: 403 })
+    }
+  }
+
   // Log the original values to audit_log before overwriting
   await supabaseAdmin.from('audit_log').insert({
     employee_id: session.user.id,
@@ -163,5 +178,22 @@ export async function PUT(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notify all admins when a past time entry is edited
+  if (existing.date < todayLA) {
+    const { data: empRow } = await supabaseAdmin.from('employees').select('name').eq('id', session.user.id).single()
+    const { data: admins } = await supabaseAdmin.from('employees').select('id').eq('role', 'admin').neq('id', session.user.id)
+    if (admins?.length) {
+      await supabaseAdmin.from('notifications').insert(
+        admins.map(a => ({
+          employee_id: a.id,
+          title: 'Past Time Entry Edited',
+          body: `${empRow?.name ?? session.user.email} edited their time entry for ${existing.date}.`,
+          link: `/dashboard/admin/employees/${session.user.id}`,
+        }))
+      )
+    }
+  }
+
   return NextResponse.json(data)
 }

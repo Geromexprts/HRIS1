@@ -125,6 +125,20 @@ export async function POST(req: Request) {
       .eq('date', date)
   }
 
+  // Notify all admins of the new OT request
+  const { data: empRow } = await supabaseAdmin.from('employees').select('name').eq('id', session.user.id).single()
+  const { data: admins } = await supabaseAdmin.from('employees').select('id').eq('role', 'admin').neq('id', session.user.id)
+  if (admins?.length) {
+    await supabaseAdmin.from('notifications').insert(
+      admins.map(a => ({
+        employee_id: a.id,
+        title: 'OT Request Submitted',
+        body: `${empRow?.name ?? session.user.email} submitted ${ot_hours}h OT for ${date}.`,
+        link: '/dashboard/admin/approvals',
+      }))
+    )
+  }
+
   return NextResponse.json(data)
 }
 

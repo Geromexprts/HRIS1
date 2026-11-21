@@ -283,6 +283,12 @@ export function PayrollView({
   const [employees, setEmployees] = useState(initialEmployees)
   const [salaryEmployee, setSalaryEmployee] = useState<Employee | null>(null)
   const [incentiveEmployee, setIncentiveEmployee] = useState<Employee | null>(null)
+  const [breakdown, setBreakdown] = useState<null | {
+    emp: Employee; hourlyRate: number; workingDays: number; elapsedDays: number
+    totalHours: number; paidPtoDays: number; unpaidPtoDays: number; missingHours: number
+    basePay: number | null; deduction: number | null; otHours: number; otPay: number | null
+    incentivesTotal: number; netPay: number | null
+  }>(null)
   const [localIncentives, setLocalIncentives] = useState<Record<string, LocalIncentives>>(() => {
     const init: Record<string, LocalIncentives> = {}
     for (const emp of initialEmployees) {
@@ -431,6 +437,124 @@ export function PayrollView({
           onSaved={handleSalarySaved}
         />
       )}
+      {/* Net Pay Breakdown Panel */}
+      {breakdown && (
+        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 360, background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-4px 0 24px rgba(0,0,0,0.12)', zIndex: 100, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 4 }}>Net Pay Breakdown</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>{breakdown.emp.name}</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                {periodStart.replace(/-/g, '/')} to {periodEnd.replace(/-/g, '/')} · completed {breakdown.elapsedDays} of {breakdown.workingDays} days
+              </div>
+            </div>
+            <button onClick={() => setBreakdown(null)} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 6, width: 28, height: 28, cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✕</button>
+          </div>
+          <div style={{ padding: '16px 24px', flex: 1 }}>
+            {(() => {
+              const fmt = (n: number | null) => n != null ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'
+              const isHourly = breakdown.emp.employment_type === 'hourly'
+              const expectedSoFar = breakdown.elapsedDays * 8
+              const rows: { label: string; note: string; value: string; color?: string }[] = [
+                {
+                  label: 'Hourly rate',
+                  note: isHourly ? `$${breakdown.emp.hourly_rate?.toFixed(2)} (hourly)` : `$${breakdown.emp.monthly_salary?.toLocaleString('en-US')} ÷ ${STANDARD_MONTHLY_HOURS}`,
+                  value: `$${breakdown.hourlyRate.toFixed(2)}/hr`,
+                },
+                {
+                  label: 'Expected so far',
+                  note: `${breakdown.elapsedDays} days × 8h`,
+                  value: `${expectedSoFar}h`,
+                },
+                {
+                  label: 'Hours worked',
+                  note: 'from time logs',
+                  value: `${breakdown.totalHours.toFixed(1)}h`,
+                },
+                {
+                  label: 'Paid PTO',
+                  note: breakdown.paidPtoDays > 0 ? `${breakdown.paidPtoDays} days × 8h` : 'none this period',
+                  value: `${(breakdown.paidPtoDays * 8).toFixed(1)}h`,
+                },
+                {
+                  label: 'Unpaid time off',
+                  note: breakdown.unpaidPtoDays > 0 ? `${breakdown.unpaidPtoDays} days × 8h` : 'none this period',
+                  value: `${(breakdown.unpaidPtoDays * 8).toFixed(1)}h`,
+                },
+                {
+                  label: 'Missing hours',
+                  note: `${expectedSoFar} − ${breakdown.totalHours.toFixed(1)} − ${(breakdown.paidPtoDays * 8).toFixed(1)} − ${(breakdown.unpaidPtoDays * 8).toFixed(1)}`,
+                  value: `${breakdown.missingHours.toFixed(1)}h`,
+                  color: breakdown.missingHours > 0 ? 'var(--red)' : undefined,
+                },
+              ]
+              const payRows: { label: string; note: string; value: string; color?: string }[] = [
+                {
+                  label: 'Base pay',
+                  note: isHourly ? `${breakdown.totalHours.toFixed(1)}h × $${breakdown.hourlyRate.toFixed(2)}` : 'full pay period',
+                  value: fmt(breakdown.basePay),
+                },
+                {
+                  label: 'Deductions',
+                  note: breakdown.missingHours > 0 ? `${breakdown.missingHours.toFixed(1)}h × $${breakdown.hourlyRate.toFixed(2)}` : 'none',
+                  value: breakdown.deduction && breakdown.deduction > 0 ? `−${fmt(breakdown.deduction)}` : '$0.00',
+                  color: breakdown.deduction && breakdown.deduction > 0 ? 'var(--red)' : undefined,
+                },
+                {
+                  label: 'OT pay',
+                  note: breakdown.otHours > 0 ? `${breakdown.otHours.toFixed(1)}h × $${breakdown.hourlyRate.toFixed(2)}` : 'none',
+                  value: breakdown.otHours > 0 ? `+${fmt(breakdown.otPay)}` : '$0.00',
+                  color: breakdown.otHours > 0 ? 'var(--accent)' : undefined,
+                },
+                {
+                  label: 'Incentives',
+                  note: breakdown.incentivesTotal > 0 ? 'bonuses added' : 'none added',
+                  value: fmt(breakdown.incentivesTotal),
+                },
+              ]
+              return (
+                <div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 12 }}>
+                    <tbody>
+                      {rows.map(r => (
+                        <tr key={r.label} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{r.label}</td>
+                          <td style={{ padding: '8px 4px', fontSize: 11, color: 'var(--text-muted)' }}>{r.note}</td>
+                          <td style={{ padding: '8px 0', fontSize: 13, fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.color ?? 'var(--text-primary)' }}>{r.value}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
+                    <tbody>
+                      {payRows.map(r => (
+                        <tr key={r.label} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '8px 0', fontSize: 13, fontWeight: 500 }}>{r.label}</td>
+                          <td style={{ padding: '8px 4px', fontSize: 11, color: 'var(--text-muted)' }}>{r.note}</td>
+                          <td style={{ padding: '8px 0', fontSize: 13, fontWeight: 600, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: r.color ?? 'var(--text-primary)' }}>{r.value}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td style={{ padding: '10px 0', fontSize: 14, fontWeight: 700 }}>Net pay</td>
+                        <td style={{ padding: '10px 4px', fontSize: 11, color: 'var(--text-muted)' }}>base − deductions + OT + incentives</td>
+                        <td style={{ padding: '10px 0', fontSize: 15, fontWeight: 700, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--green)' }}>{fmt(breakdown.netPay)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <Link href={`/dashboard/admin/employees/${breakdown.emp.id}?tab=time`} style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
+                      Open time logs
+                    </Link>
+                    <Link href={`/dashboard/admin/employees/${breakdown.emp.id}?tab=leave`} style={{ fontSize: 12, padding: '6px 12px', borderRadius: 6, border: '1px solid var(--border)', color: 'var(--accent)', textDecoration: 'none', fontWeight: 500 }}>
+                      Open leave requests
+                    </Link>
+                  </div>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
       {incentiveEmployee && incentiveEmpData && (
         <IncentiveModal
           employee={incentiveEmployee}
@@ -495,7 +619,7 @@ export function PayrollView({
         </div>
         <div className="table-wrap">
           <table className="data-table">
-            <thead>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)' }}>
               {/* Column group labels */}
               <tr>
                 <th colSpan={4} style={{ padding: '8px 12px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textAlign: 'left', borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', background: 'var(--bg-subtle, var(--border))' }}>
@@ -685,9 +809,9 @@ export function PayrollView({
                         <span style={{
                           fontVariantNumeric: 'tabular-nums',
                           fontWeight: 600,
-                          color: pto < 2 ? 'var(--red)' : pto < 5 ? 'var(--amber)' : 'var(--green)',
+                          color: pto * 8 < 16 ? 'var(--red)' : pto * 8 < 40 ? 'var(--amber)' : 'var(--green)',
                         }}>
-                          {pto}d
+                          {(pto * 8).toFixed(0)}h
                         </span>
                       </td>
                       {/* Base Pay */}
@@ -735,7 +859,27 @@ export function PayrollView({
                           : missingHours > 0
                             ? 'var(--amber)'
                             : 'var(--green)',
-                      }}>
+                        cursor: netPay != null ? 'pointer' : undefined,
+                        textDecoration: netPay != null ? 'underline dotted' : undefined,
+                      }}
+                        onClick={() => netPay != null && setBreakdown({
+                          emp: e,
+                          hourlyRate: isHourly ? (e.hourly_rate ?? 0) : (e.monthly_salary ?? 0) / STANDARD_MONTHLY_HOURS,
+                          workingDays,
+                          elapsedDays: empElapsedDays,
+                          totalHours,
+                          paidPtoDays,
+                          unpaidPtoDays,
+                          missingHours,
+                          basePay,
+                          deduction,
+                          otHours: approvedOtHours,
+                          otPay,
+                          incentivesTotal,
+                          netPay,
+                        })}
+                        title={netPay != null ? 'Click to see breakdown' : undefined}
+                      >
                         {netPay != null
                           ? `$${netPay.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                           : '—'}

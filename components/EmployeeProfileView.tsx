@@ -495,8 +495,8 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
         <div className="stat-card">
           <div className="stat-label">PTO Balance</div>
-          <div className="stat-value" style={{ fontSize: 22, color: pto < 3 ? 'var(--amber)' : 'var(--green)' }}>
-            {pto}<span className="stat-unit">days</span>
+          <div className="stat-value" style={{ fontSize: 22, color: pto * 8 < 24 ? 'var(--amber)' : 'var(--green)' }}>
+            {(pto * 8).toFixed(0)}<span className="stat-unit">h</span>
           </div>
         </div>
         <div className="stat-card">
@@ -745,7 +745,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                 { label: 'Total Hours', value: fmtH(Math.round(totalHours * 10) / 10) },
                 { label: 'Regular Hours', value: fmtH(Math.round(regularHours * 10) / 10) },
                 { label: 'OT Hours', value: fmtH(Math.round(otHours * 10) / 10) },
-                { label: 'PTO Used', value: deductionRow?.pto_days_used != null ? `${deductionRow.pto_days_used} days` : '—' },
+                { label: 'PTO Used', value: deductionRow?.pto_days_used != null ? `${(deductionRow.pto_days_used * 8).toFixed(0)} hrs` : '—' },
                 { label: isHourly ? 'Est. Gross' : 'Net Pay', value: netPay != null ? fmtMoney(netPay) : '—' },
               ].map(row => (
                 <div key={row.label}>
@@ -1079,7 +1079,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                         </td>
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(p.monthly_salary)}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: (p.leave_days ?? 0) > 0 ? 'var(--amber)' : 'var(--text-muted)' }}>{p.leave_days ?? 0} days</td>
-                        <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{p.pto_days_used ?? 0} days</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{((p.pto_days_used ?? 0) * 8).toFixed(0)} hrs</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: (p.shortfall_days ?? 0) > 0 ? 'var(--red)' : 'var(--text-muted)' }}>{(p.shortfall_days ?? 0) > 0 ? `${p.shortfall_days} days` : '—'}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', color: (p.shortfall_deduction ?? 0) > 0 ? 'var(--red)' : 'var(--text-muted)' }}>{(p.shortfall_deduction ?? 0) > 0 ? `-$${p.shortfall_deduction!.toFixed(2)}` : '—'}</td>
                         <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: p.net_pay != null ? 'var(--green)' : 'var(--text-muted)' }}>{fmtMoney(p.net_pay)}</td>
