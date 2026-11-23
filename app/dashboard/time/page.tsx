@@ -11,11 +11,12 @@ export default async function TimePage() {
 
   const today = laToday()
 
-  const [{ data: todayEntry }, { data: recentEntries }, { data: empRow }, { data: otRequests }] = await Promise.all([
+  const [{ data: todayEntry }, { data: recentEntries }, { data: empRow }, { data: otRequests }, { data: unlockRows }] = await Promise.all([
     supabaseAdmin.from('time_entries').select('*').eq('employee_id', session.user.id).eq('date', today).single(),
     supabaseAdmin.from('time_entries').select('*').eq('employee_id', session.user.id).order('date', { ascending: false }),
     supabaseAdmin.from('employees').select('early_clock_in').eq('id', session.user.id).single(),
     supabaseAdmin.from('ot_requests').select('id, date, ot_hours, ot_start_time, ot_end_time, reason, status, created_at').eq('employee_id', session.user.id).order('created_at', { ascending: false }),
+    supabaseAdmin.from('ot_date_unlocks').select('date').eq('employee_id', session.user.id),
   ])
 
   return (
@@ -30,6 +31,7 @@ export default async function TimePage() {
         recentEntries={recentEntries ?? []}
         earlyClockIn={empRow?.early_clock_in ?? false}
         otRequests={otRequests ?? []}
+        unlockedDates={(unlockRows ?? []).map(r => r.date)}
       />
     </div>
   )
