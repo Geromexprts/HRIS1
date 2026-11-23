@@ -358,10 +358,10 @@ export function EmployeesView({ initialEmployees }: { initialEmployees: Employee
         />
       </div>
 
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
+      <div className="card" style={{ padding: 0, overflow: 'visible' }}>
+        <div style={{ overflow: 'auto', maxHeight: 'calc(100vh - 300px)' }}>
+          <table className="data-table" style={{ minWidth: '100%' }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)' }}>
               <tr>
                 <th>Name</th>
                 <th>Code</th>
