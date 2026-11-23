@@ -281,6 +281,8 @@ export function PayrollView({
   workingDaysMap?: Record<string, number>
 }) {
   const [employees, setEmployees] = useState(initialEmployees)
+  const [filterLocation, setFilterLocation] = useState('')
+  const [filterSchedule, setFilterSchedule] = useState('')
   const [salaryEmployee, setSalaryEmployee] = useState<Employee | null>(null)
   const [incentiveEmployee, setIncentiveEmployee] = useState<Employee | null>(null)
   const [breakdown, setBreakdown] = useState<null | {
@@ -644,8 +646,24 @@ export function PayrollView({
               {/* Column headers */}
               <tr>
                 <th>Employee</th>
-                <th>Location</th>
-                <th>Schedule</th>
+                <th>
+                  <div>Location</div>
+                  <select value={filterLocation} onChange={e => setFilterLocation(e.target.value)} style={{ marginTop: 3, fontSize: 10, padding: '1px 3px', borderRadius: 3, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', width: '100%' }}>
+                    <option value="">All</option>
+                    {[...new Set(employees.map(e => e.office_location).filter(Boolean))].map(loc => (
+                      <option key={loc} value={loc!}>{loc}</option>
+                    ))}
+                  </select>
+                </th>
+                <th>
+                  <div>Schedule</div>
+                  <select value={filterSchedule} onChange={e => setFilterSchedule(e.target.value)} style={{ marginTop: 3, fontSize: 10, padding: '1px 3px', borderRadius: 3, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', width: '100%' }}>
+                    <option value="">All</option>
+                    {[...new Set(employees.map(e => e.shift_schedule).filter(Boolean))].map(s => (
+                      <option key={s} value={s!}>{s}</option>
+                    ))}
+                  </select>
+                </th>
                 <th>Salary / Rate</th>
                 <th style={{ borderLeft: '1px solid var(--border)' }}>Working Days</th>
                 <th>Expected Hrs</th>
@@ -666,15 +684,18 @@ export function PayrollView({
               </tr>
             </thead>
             <tbody>
-              {employees.length === 0
-                ? (
-                  <tr>
-                    <td colSpan={20} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>
-                      No active employees.
-                    </td>
-                  </tr>
+              {(() => {
+                const visibleEmployees = employees.filter(e =>
+                  (!filterLocation || e.office_location === filterLocation) &&
+                  (!filterSchedule || e.shift_schedule === filterSchedule)
                 )
-                : employees.map(e => {
+                if (employees.length === 0) return (
+                  <tr><td colSpan={20} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>No active employees.</td></tr>
+                )
+                if (visibleEmployees.length === 0) return (
+                  <tr><td colSpan={20} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '40px 16px' }}>No employees match this filter.</td></tr>
+                )
+                return visibleEmployees.map(e => {
                   const isHourly = e.employment_type === 'hourly'
                   const d = deductionMap[e.id]
                   const inc = localIncentives[e.id] ?? defaultIncentives(d ?? null)
@@ -886,7 +907,8 @@ export function PayrollView({
                       </td>
                     </tr>
                   )
-                })}
+                })
+              })()}
             </tbody>
           </table>
         </div>

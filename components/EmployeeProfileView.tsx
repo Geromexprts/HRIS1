@@ -225,6 +225,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   const [tagOverrides, setTagOverrides] = useState<TagOverride[]>([])
   const [savingTag, setSavingTag] = useState<string | null>(null)
   const [savingLeaveType, setSavingLeaveType] = useState<string | null>(null)
+  const [tagFilter, setTagFilter] = useState<string>('')
 
   async function saveEmpField(field: string, value: unknown) {
     setEmpSaving(true)
@@ -881,25 +882,46 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
               </span>
             </div>
           </div>
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
+          <div style={{ overflow: 'auto', maxHeight: '520px' }}>
+            <table className="data-table" style={{ minWidth: '100%' }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--surface)' }}>
                 <tr>
-                  <th>Date</th><th>Tag</th><th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Approved OT</th><th>Note</th><th>Unlock (Edit + OT)</th><th></th>
+                  <th>Date</th>
+                  <th>
+                    <div>Tag</div>
+                    <select value={tagFilter} onChange={e => setTagFilter(e.target.value)} style={{ marginTop: 3, fontSize: 10, padding: '1px 3px', borderRadius: 3, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text-primary)', width: '100%' }}>
+                      <option value="">All</option>
+                      <option value="worked">Worked</option>
+                      <option value="missing">Missing</option>
+                      <option value="paid_leave">Paid Leave</option>
+                      <option value="unpaid_leave">Unpaid Leave</option>
+                      <option value="off">Off</option>
+                    </select>
+                  </th>
+                  <th>Clock In</th><th>Clock Out</th><th>Hours</th><th>OT</th><th>Approved OT</th><th>Note</th><th>Unlock (Edit + OT)</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {(() => {
                   const allDays = genDays(viewPeriodStart, viewPeriodEnd)
                   if (allDays.length === 0) return (
-                    <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No days in this period.</td></tr>
+                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No days in this period.</td></tr>
                   )
                   const scheduleDays = parseScheduleDays(emp.shift_schedule)
-                  return allDays.map(date => {
+                  const filteredDays = tagFilter
+                    ? allDays.filter(date => computeDayTag(date, !!entries.find(e => e.date === date), scheduleDays, leaveRequests, tagOverrides) === tagFilter)
+                    : allDays
+                  if (filteredDays.length === 0) return (
+                    <tr><td colSpan={10} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '32px 16px' }}>No entries match this filter.</td></tr>
+                  )
+                  return filteredDays.map(date => {
                     const entry = entries.find(e => e.date === date)
                     const tag = computeDayTag(date, !!entry, scheduleDays, leaveRequests, tagOverrides)
                     const leave = leaveRequests.find(r => r.status === 'approved' && r.start_date <= date && r.end_date >= date)
-                    const ot = entry?.total_hours != null ? Math.max(0, entry.total_hours - 8) : 0
+                    const otReq = otRequests.find(r => r.date === date)
+                    const approvedOtForDate = otReq?.status === 'approved' ? (otReq.ot_hours ?? 0) : 0
+                    const rawExcess = entry?.total_hours != null ? Math.max(0, entry.total_hours - 8) : 0
+                    const ot = Math.max(0, rawExcess - approvedOtForDate)
                     return (
                       <tr key={date}>
                         <td style={{ fontSize: 12.5, whiteSpace: 'nowrap' }}>
@@ -954,12 +976,10 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
                           {ot > 0 ? `+${fmtH(ot)}` : '—'}
                         </td>
                         <td style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {(() => {
-                            const otReq = otRequests.find(r => r.date === date)
-                            if (!otReq) return <span style={{ color: 'var(--text-muted)' }}>—</span>
-                            const color = otReq.status === 'approved' ? 'var(--green)' : otReq.status === 'denied' ? 'var(--red)' : 'var(--amber)'
-                            return <span style={{ fontWeight: 600, color }}>{otReq.ot_hours}h <span style={{ fontSize: 11, fontWeight: 400, opacity: 0.8 }}>({otReq.status})</span></span>
-                          })()}
+                          {approvedOtForDate > 0
+                            ? <span style={{ fontWeight: 600, color: 'var(--green)' }}>{approvedOtForDate}h</span>
+                            : <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          }
                         </td>
                         <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>{entry?.is_edited ? 'edited' : '—'}</td>
                         <td>
