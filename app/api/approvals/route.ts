@@ -98,14 +98,34 @@ export async function PUT(req: NextRequest) {
       .single()
 
     const monthlySalary: number | null = employee?.monthly_salary ?? null
+    const daysRequested: number = leave.days_requested
+    const today = laToday()
+    const months = employee?.employment_start_date ? monthsEmployed(employee.employment_start_date, today) : 999
 
+    // Determine PTO days used (applies to all employees regardless of salary type)
+    let ptoDaysUsed = 0
+    if (months >= 6) {
+      const { data: pto } = await supabaseAdmin
+        .from('pto_balances')
+        .select('current_balance')
+        .eq('employee_id', leave.employee_id)
+        .single()
+
+      const ptoBalance: number = pto?.current_balance ?? 0
+      ptoDaysUsed = Math.min(ptoBalance, daysRequested)
+
+      if (ptoDaysUsed > 0) {
+        await supabaseAdmin
+          .from('pto_balances')
+          .update({ current_balance: Math.max(0, ptoBalance - ptoDaysUsed) })
+          .eq('employee_id', leave.employee_id)
+      }
+    }
+
+    // Record payroll deduction only for salaried employees
     if (monthlySalary !== null && employee?.employment_start_date) {
-      const today = laToday()
-      const months = monthsEmployed(employee.employment_start_date, today)
       const dailyRate = (monthlySalary / 173.33) * 8
-      const daysRequested: number = leave.days_requested
 
-      let ptoDaysUsed = 0
       let shortfallDays = 0
       let shortfallDeduction = 0
 
@@ -114,30 +134,8 @@ export async function PUT(req: NextRequest) {
         shortfallDeduction = shortfallDays * dailyRate
         ptoDaysUsed = 0
       } else {
-        const { data: pto } = await supabaseAdmin
-          .from('pto_balances')
-          .select('current_balance')
-          .eq('employee_id', leave.employee_id)
-          .single()
-
-        const ptoBalance: number = pto?.current_balance ?? 0
-
-        if (ptoBalance >= daysRequested) {
-          ptoDaysUsed = daysRequested
-          shortfallDays = 0
-          shortfallDeduction = 0
-        } else {
-          ptoDaysUsed = ptoBalance
-          shortfallDays = daysRequested - ptoBalance
-          shortfallDeduction = shortfallDays * dailyRate
-        }
-
-        if (ptoDaysUsed > 0) {
-          await supabaseAdmin
-            .from('pto_balances')
-            .update({ current_balance: Math.max(0, (pto?.current_balance ?? 0) - ptoDaysUsed) })
-            .eq('employee_id', leave.employee_id)
-        }
+        shortfallDays = daysRequested - ptoDaysUsed
+        shortfallDeduction = shortfallDays * dailyRate
       }
 
       const { periodStart, periodEnd } = laPeriodBounds()

@@ -175,7 +175,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
   approvedOtHours?: number
   initialOtRequests?: { date: string; ot_hours: number; status: string }[]
 }) {
-  const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
+  const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'pto' | 'audit'>('overview')
   const [showPtoHistory, setShowPtoHistory] = useState(false)
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [earlyClockIn, setEarlyClockIn] = useState(emp.early_clock_in)
@@ -492,6 +492,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
     { id: 'time', label: `Time Log (${entries.length})` },
     { id: 'leave', label: `Leave (${leaveRequests.length})` },
     { id: 'payroll', label: 'Payroll' },
+    { id: 'pto', label: 'PTO' },
     { id: 'audit', label: `Audit Trail (${auditLog.length})` },
   ] as const
 
@@ -1203,6 +1204,103 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
           </div>
         </div>
       )}
+
+      {/* ── PTO Tab ── */}
+      {tab === 'pto' && (() => {
+        const ptoLeaves = leaveRequests.filter(r => r.status === 'approved' && r.leave_type === 'pto')
+        type HItem = { date: string; kind: 'accrual' | 'used'; days: number; type?: string; note?: string; range?: string; balanceAfter: number }
+        const sorted = [
+          ...ptoAccrualHistory.map(e => ({ date: e.date, kind: 'accrual' as const, days: e.days, type: e.type, note: e.note })),
+          ...ptoLeaves.map(l => ({ date: l.start_date, kind: 'used' as const, days: -l.days_requested, range: l.start_date === l.end_date ? l.start_date : `${l.start_date} → ${l.end_date}` })),
+        ].sort((a, b) => a.date.localeCompare(b.date))
+        // compute running balance oldest→newest, then reverse for display (most recent first)
+        let running = pto
+        const items: HItem[] = [...sorted].reverse().map(e => { const bal = running; running -= e.days; return { ...e, balanceAfter: bal } })
+        const ptoDays = pto
+        const ptoHours = Math.round(ptoDays * 8 * 10) / 10
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              <div className="stat-card">
+                <div className="stat-label">Current Balance</div>
+                <div className="stat-value" style={{ fontSize: 22, color: ptoDays < 1 ? 'var(--red)' : ptoDays < 3 ? 'var(--amber)' : 'var(--green)' }}>
+                  {ptoDays}<span className="stat-unit">d</span>
+                  <span style={{ fontSize: 14, fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6 }}>/ {ptoHours}h</span>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">PTO Used (All Time)</div>
+                <div className="stat-value" style={{ fontSize: 22 }}>
+                  {ptoLeaves.reduce((s, l) => s + l.days_requested, 0)}<span className="stat-unit">d</span>
+                </div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-label">Accrual Events</div>
+                <div className="stat-value" style={{ fontSize: 22 }}>{ptoAccrualHistory.length}</div>
+              </div>
+            </div>
+            <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+              <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div className="card-title" style={{ marginBottom: 2 }}>PTO Breakdown</div>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>How the balance reached {ptoDays} days — most recent first</p>
+                </div>
+              </div>
+              {items.length === 0
+                ? <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '24px 24px' }}>No PTO history yet.</p>
+                : (
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr><th>Date</th><th>Type</th><th>Change</th><th>Balance After</th><th>Note / Range</th></tr>
+                      </thead>
+                      <tbody>
+                        {items.map((e, i) => (
+                          <tr key={i}>
+                            <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{e.date}</td>
+                            <td>
+                              {e.kind === 'used'
+                                ? <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 4, padding: '2px 7px', background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>PTO used</span>
+                                : <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 4, padding: '2px 7px', background: e.type === 'manual_adjustment' ? 'rgba(99,102,241,0.12)' : e.type === 'annual_reset' ? 'rgba(34,197,94,0.12)' : 'rgba(251,191,36,0.15)', color: e.type === 'manual_adjustment' ? 'var(--accent)' : e.type === 'annual_reset' ? 'var(--green)' : 'var(--amber)' }}>{e.type!.replace(/_/g, ' ')}</span>
+                              }
+                            </td>
+                            <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: e.days >= 0 ? 'var(--green)' : 'var(--red)', whiteSpace: 'nowrap' }}>{e.days > 0 ? '+' : ''}{e.days}d</td>
+                            <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{Math.round(e.balanceAfter * 100) / 100}d</td>
+                            <td style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{e.range ?? e.note ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+            </div>
+            {ptoLeaves.length > 0 && (
+              <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
+                  <div className="card-title" style={{ marginBottom: 2 }}>Approved PTO Leaves</div>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead>
+                      <tr><th>Date Range</th><th>Days</th><th>Status</th><th>Requested</th></tr>
+                    </thead>
+                    <tbody>
+                      {ptoLeaves.map(l => (
+                        <tr key={l.id}>
+                          <td style={{ whiteSpace: 'nowrap' }}>{l.start_date === l.end_date ? fmtDate(l.start_date) : `${fmtDate(l.start_date)} – ${fmtDate(l.end_date)}`}</td>
+                          <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>{l.days_requested}d</td>
+                          <td><span className={`badge ${STATUS_BADGE[l.status] ?? 'badge-gray'}`}>{l.status}</span></td>
+                          <td style={{ color: 'var(--text-muted)', fontSize: 12 }}>{new Date(l.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: LA_TZ })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* ── Add Time Entry Modal ── */}
       {showAddModal && (

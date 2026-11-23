@@ -43,6 +43,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
     { data: auditLog },
     { data: payslipHistory },
     { data: otRequestRows },
+    { data: allEmployees },
   ] = await Promise.all([
     supabaseAdmin.from('employees').select('*').eq('id', id).single(),
     supabaseAdmin.from('pto_balances').select('current_balance, accrual_history').eq('employee_id', id).single(),
@@ -52,11 +53,17 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
     supabaseAdmin.from('audit_log').select('*').eq('employee_id', id).order('performed_at', { ascending: false }).limit(50),
     supabaseAdmin.from('payroll_deductions').select('*').eq('employee_id', id).order('pay_period_start', { ascending: false }).limit(24),
     supabaseAdmin.from('ot_requests').select('date, ot_hours, status').eq('employee_id', id).gte('date', periodStart).lte('date', periodEnd),
+    supabaseAdmin.from('employees').select('id, name').eq('status', 'active').order('name'),
   ])
 
   const approvedOtHours = Math.round((otRequestRows ?? []).filter(r => r.status === 'approved').reduce((s, r) => s + (r.ot_hours ?? 0), 0) * 100) / 100
 
   if (!emp) redirect('/dashboard/admin/employees')
+
+  const empList = allEmployees ?? []
+  const empIndex = empList.findIndex(e => e.id === id)
+  const prevEmpId = empIndex > 0 ? empList[empIndex - 1].id : null
+  const nextEmpId = empIndex >= 0 && empIndex < empList.length - 1 ? empList[empIndex + 1].id : null
 
   const [managerData, approverData] = await Promise.all([
     emp.manager_id ? supabaseAdmin.from('employees').select('name').eq('id', emp.manager_id).single() : Promise.resolve({ data: null }),
@@ -85,6 +92,16 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <CopyOnboardingLink />
+            {prevEmpId && (
+              <Link href={`/dashboard/admin/employees/${prevEmpId}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)' }}>
+                ← Prev
+              </Link>
+            )}
+            {nextEmpId && (
+              <Link href={`/dashboard/admin/employees/${nextEmpId}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)' }}>
+                Next →
+              </Link>
+            )}
             <span className={`badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}`}>{emp.status}</span>
             <span className="badge badge-blue" style={{ textTransform: 'capitalize' }}>{emp.role}</span>
           </div>
