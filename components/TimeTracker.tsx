@@ -62,7 +62,8 @@ function getStatus(entry: TimeEntry | null) {
   return 'clocked_in'
 }
 
-function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () => void; onSave: (u: TimeEntry) => void }) {
+function EditModal({ entry, onClose, onSave, clockInEditable = false }: { entry: TimeEntry; onClose: () => void; onSave: (u: TimeEntry) => void; clockInEditable?: boolean }) {
+  const [clockIn, setClockIn] = useState(utcToLAInput(entry.clock_in))
   const [clockOut, setClockOut] = useState(utcToLAInput(entry.clock_out))
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -70,10 +71,11 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
 
   async function handleSave() {
     if (!clockOut) { setError('Clock-out time is required.'); return }
+    if (clockInEditable && !clockIn) { setError('Clock-in time is required.'); return }
     setSaving(true)
     const res = await fetch('/api/time', {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ entryId: entry.id, clock_in: entry.clock_in, clock_out: laInputToUTC(clockOut), edit_note: note }),
+      body: JSON.stringify({ entryId: entry.id, clock_in: clockInEditable ? laInputToUTC(clockIn) : entry.clock_in, clock_out: laInputToUTC(clockOut), edit_note: note }),
     })
     const data = await res.json()
     if (!res.ok) { setError(data.error ?? 'Failed to save.'); setSaving(false); return }
@@ -83,19 +85,30 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
   return (
     <div className="modal-overlay">
       <div className="modal">
-        <div className="modal-title">Edit Clock-Out Time</div>
+        <div className="modal-title">{clockInEditable ? 'Edit Time Entry' : 'Edit Clock-Out Time'}</div>
         <div className="modal-sub">
           {toDate(entry.date)} · This edit will be flagged for admin review.
           <span style={{ color: 'var(--accent)', marginLeft: 6 }}>All times in PST</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
-            <label className="field-label">Clock In <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400 }}>(not editable)</span></label>
-            <input type="datetime-local" value={utcToLAInput(entry.clock_in)} disabled className="field-input" style={{ opacity: 0.5, cursor: 'not-allowed' }} />
+            <label className="field-label">
+              Clock In
+              {!clockInEditable && <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 400, marginLeft: 6 }}>(not editable)</span>}
+            </label>
+            <input
+              type="datetime-local"
+              value={clockInEditable ? clockIn : utcToLAInput(entry.clock_in)}
+              onChange={clockInEditable ? e => setClockIn(e.target.value) : undefined}
+              disabled={!clockInEditable}
+              className="field-input"
+              style={!clockInEditable ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              autoFocus={clockInEditable}
+            />
           </div>
           <div>
             <label className="field-label">Clock Out</label>
-            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" autoFocus />
+            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" autoFocus={!clockInEditable} />
           </div>
           <div>
             <label className="field-label">Reason for edit</label>
@@ -393,7 +406,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} />}
+      {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} clockInEditable={unlockedDates.includes(editingEntry.date)} />}
       {showOtModal && <OtModal onClose={() => setShowOtModal(false)} onSubmit={r => { setOtRequests(prev => [r, ...prev]); setShowOtModal(false) }} />}
       {addPastDate && <AddPastEntryModal date={addPastDate} onClose={() => setAddPastDate(null)} onSave={e => { setEntries(prev => [e, ...prev].sort((a, b) => b.date.localeCompare(a.date))); setAddPastDate(null) }} />}
 
