@@ -352,7 +352,7 @@ export function PayrollView({
       'Name', 'Location', 'Schedule', 'Type', 'Monthly Salary', 'Hourly Rate',
       'Working Days', 'Expected Hours',
       'Days So Far', 'Expected So Far', 'Hours Worked',
-      'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Days', 'Missing Hours',
+      'Approved OT Hrs', 'Paid PTO Days', 'Unpaid TO Hrs', 'Missing Hours',
       'PTO Balance', 'PTO Used',
       'Base Pay', 'Deductions', 'OT Pay',
       'Intake Booking', 'Google Review', 'Performance', 'Referral', 'Reimbursements', 'Total Incentives',
@@ -391,7 +391,7 @@ export function PayrollView({
         hours.toFixed(2),
         otHrs.toFixed(2),
         paidPto,
-        unpaidPto,
+        Math.round(unpaidPto * 8),
         missingHours.toFixed(2),
         ptoMap[e.id] ?? 0,
         d?.pto_days_used ?? '',
@@ -812,7 +812,7 @@ export function PayrollView({
                       </td>
                       {/* Unpaid TO */}
                       <td style={{ fontVariantNumeric: 'tabular-nums', color: unpaidPtoDays > 0 ? 'var(--red)' : 'var(--text-muted)' }}>
-                        {unpaidPtoDays > 0 ? `${unpaidPtoDays}d` : '—'}
+                        {unpaidPtoDays > 0 ? `${(unpaidPtoDays * 8).toFixed(0)}h` : '—'}
                       </td>
                       {/* Missing Hrs */}
                       <td style={{ fontVariantNumeric: 'tabular-nums' }}>

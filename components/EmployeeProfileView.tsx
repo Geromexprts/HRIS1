@@ -157,11 +157,12 @@ function laInputToUTC(localStr: string): string {
   return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
 }
 
-export function EmployeeProfileView({ emp, managerName, approverName, pto, leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0 }: {
+export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAccrualHistory = [], leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0 }: {
   emp: Emp
   managerName: string | null
   approverName: string | null
   pto: number
+  ptoAccrualHistory?: { date: string; type: string; days: number; note: string }[]
   leaveRequests: LeaveRequest[]
   timeEntries: TimeEntry[]
   deductionRow: DeductionRow
@@ -174,6 +175,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
   approvedOtHours?: number
 }) {
   const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
+  const [showPtoHistory, setShowPtoHistory] = useState(false)
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [earlyClockIn, setEarlyClockIn] = useState(emp.early_clock_in)
   const [toggling, setToggling] = useState(false)
@@ -496,8 +498,8 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {/* Stat bar */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 20 }}>
-        <div className="stat-card">
-          <div className="stat-label">PTO Balance</div>
+        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setShowPtoHistory(v => !v)}>
+          <div className="stat-label">PTO Balance <span style={{ fontSize: 10, color: 'var(--accent)' }}>{showPtoHistory ? '▲' : '▼ history'}</span></div>
           <div className="stat-value" style={{ fontSize: 22, color: pto * 8 < 24 ? 'var(--amber)' : 'var(--green)' }}>
             {(pto * 8).toFixed(0)}<span className="stat-unit">h</span>
           </div>
@@ -521,6 +523,52 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, leave
           </div>
         </div>
       </div>
+
+      {/* PTO History panel */}
+      {showPtoHistory && (() => {
+        const ptoLeaves = leaveRequests.filter(r => r.status === 'approved' && r.leave_type === 'pto')
+        type HItem = { date: string; kind: 'accrual' | 'used'; days: number; type?: string; note?: string; range?: string }
+        const items: HItem[] = [
+          ...ptoAccrualHistory.map(e => ({ date: e.date, kind: 'accrual' as const, days: e.days, type: e.type, note: e.note })),
+          ...ptoLeaves.map(l => ({ date: l.start_date, kind: 'used' as const, days: -l.days_requested, range: l.start_date === l.end_date ? l.start_date : `${l.start_date} → ${l.end_date}` })),
+        ].sort((a, b) => b.date.localeCompare(a.date))
+        return (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div className="card-title" style={{ margin: 0 }}>PTO History</div>
+              <button onClick={() => setShowPtoHistory(false)} style={{ fontSize: 12, color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>Close</button>
+            </div>
+            {items.length === 0
+              ? <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>No PTO history yet.</p>
+              : (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border)' }}>
+                      {['Date', 'Type', 'Days', 'Note / Range'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '5px 10px', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((e, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '7px 10px', fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>{e.date}</td>
+                        <td style={{ padding: '7px 10px' }}>
+                          {e.kind === 'used'
+                            ? <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 4, padding: '2px 7px', background: 'rgba(239,68,68,0.12)', color: 'var(--red)' }}>PTO used</span>
+                            : <span style={{ fontSize: 11, fontWeight: 600, borderRadius: 4, padding: '2px 7px', background: e.type === 'manual_adjustment' ? 'rgba(99,102,241,0.12)' : e.type === 'annual_reset' ? 'rgba(34,197,94,0.12)' : 'rgba(251,191,36,0.15)', color: e.type === 'manual_adjustment' ? 'var(--accent)' : e.type === 'annual_reset' ? 'var(--green)' : 'var(--amber)' }}>{e.type!.replace(/_/g, ' ')}</span>
+                          }
+                        </td>
+                        <td style={{ padding: '7px 10px', fontVariantNumeric: 'tabular-nums', fontWeight: 600, color: e.days >= 0 ? 'var(--green)' : 'var(--red)' }}>{e.days > 0 ? '+' : ''}{e.days}</td>
+                        <td style={{ padding: '7px 10px', color: 'var(--text-secondary)' }}>{e.range ?? e.note}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </div>
+        )
+      })()}
 
       {/* Tabs */}
       <div className="tabs" style={{ marginBottom: 16 }}>

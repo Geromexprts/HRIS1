@@ -45,7 +45,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
     { data: approvedOtRows },
   ] = await Promise.all([
     supabaseAdmin.from('employees').select('*').eq('id', id).single(),
-    supabaseAdmin.from('pto_balances').select('current_balance').eq('employee_id', id).single(),
+    supabaseAdmin.from('pto_balances').select('current_balance, accrual_history').eq('employee_id', id).single(),
     supabaseAdmin.from('leave_requests').select('*').eq('employee_id', id).order('created_at', { ascending: false }).limit(50),
     supabaseAdmin.from('time_entries').select('*').eq('employee_id', id).gte('date', periodStart).lte('date', today).order('date', { ascending: false }),
     supabaseAdmin.from('payroll_deductions').select('*').eq('pay_period_start', periodStart).eq('employee_id', id).single(),
@@ -120,6 +120,7 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
         managerName={managerName}
         approverName={approverName}
         pto={pto?.current_balance ?? 0}
+        ptoAccrualHistory={(pto?.accrual_history ?? []) as { date: string; type: string; days: number; note: string }[]}
         leaveRequests={leaveRequests ?? []}
         timeEntries={timeEntries ?? []}
         deductionRow={deductionRow ?? null}

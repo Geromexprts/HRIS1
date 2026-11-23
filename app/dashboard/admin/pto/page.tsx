@@ -21,10 +21,11 @@ export default async function AdminPtoPage() {
 
   const today = laToday()
 
-  const [{ data: employees }, { data: balances }, { data: placedRecords }] = await Promise.all([
+  const [{ data: employees }, { data: balances }, { data: placedRecords }, { data: ptoLeaves }] = await Promise.all([
     supabaseAdmin.from('employees').select('id, name, employment_start_date, pto_policy').eq('status', 'active').order('name'),
     supabaseAdmin.from('pto_balances').select('employee_id, current_balance, last_accrual_date, accrual_history'),
     supabaseAdmin.from('placed_staff_pto').select('*'),
+    supabaseAdmin.from('leave_requests').select('employee_id, start_date, end_date, days_requested, leave_type').eq('status', 'approved').eq('leave_type', 'pto').order('start_date', { ascending: false }),
   ])
 
   const balanceMap = Object.fromEntries((balances ?? []).map(b => [b.employee_id, b]))
@@ -60,12 +61,19 @@ export default async function AdminPtoPage() {
     }
   }
 
+  const ptoLeavesByEmp: Record<string, { start_date: string; end_date: string; days_requested: number }[]> = {}
+  for (const lr of ptoLeaves ?? []) {
+    if (!ptoLeavesByEmp[lr.employee_id]) ptoLeavesByEmp[lr.employee_id] = []
+    ptoLeavesByEmp[lr.employee_id].push({ start_date: lr.start_date, end_date: lr.end_date, days_requested: lr.days_requested })
+  }
+
   const xprtsRows = xprtsEmployees.map(emp => ({
     id: emp.id,
     name: emp.name,
     employmentStartDate: emp.employment_start_date,
     balanceDays: displayBalances[emp.id] ?? 0,
     history: (balanceMap[emp.id]?.accrual_history ?? []) as AccrualEvent[],
+    leaveUsage: ptoLeavesByEmp[emp.id] ?? [],
   }))
 
   // ── Placed staff: compute from time entries ──────────────────────────────────
