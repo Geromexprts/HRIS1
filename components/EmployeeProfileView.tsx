@@ -900,7 +900,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
 
       {/* ── Time Log ── */}
       {tab === 'time' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0, overflow: 'visible' }}>
           <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <div className="card-title" style={{ marginBottom: 0 }}>Time Log</div>
