@@ -92,16 +92,6 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <CopyOnboardingLink />
-            {prevEmpId && (
-              <Link href={`/dashboard/admin/employees/${prevEmpId}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)' }}>
-                ← Prev
-              </Link>
-            )}
-            {nextEmpId && (
-              <Link href={`/dashboard/admin/employees/${nextEmpId}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)' }}>
-                Next →
-              </Link>
-            )}
             <span className={`badge ${emp.status === 'active' ? 'badge-green' : 'badge-gray'}`}>{emp.status}</span>
             <span className="badge badge-blue" style={{ textTransform: 'capitalize' }}>{emp.role}</span>
           </div>
@@ -148,6 +138,8 @@ export default async function EmployeeProfilePage({ params }: { params: Promise<
         periodEnd={periodEnd}
         prevPeriodStart={prevPeriodStart}
         prevPeriodEnd={prevPeriodEnd}
+        prevEmpId={prevEmpId}
+        nextEmpId={nextEmpId}
       />
     </div>
   )

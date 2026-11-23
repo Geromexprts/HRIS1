@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { leaveTypeLabel } from '@/lib/countries'
 
@@ -157,7 +158,10 @@ function laInputToUTC(localStr: string): string {
   return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
 }
 
-export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAccrualHistory = [], leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0, initialOtRequests = [] }: {
+const VALID_TABS = ['overview', 'time', 'leave', 'payroll', 'pto', 'audit'] as const
+type Tab = typeof VALID_TABS[number]
+
+export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAccrualHistory = [], leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0, initialOtRequests = [], prevEmpId = null, nextEmpId = null }: {
   emp: Emp
   managerName: string | null
   approverName: string | null
@@ -174,8 +178,18 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
   prevPeriodEnd?: string
   approvedOtHours?: number
   initialOtRequests?: { date: string; ot_hours: number; status: string }[]
+  prevEmpId?: string | null
+  nextEmpId?: string | null
 }) {
-  const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'pto' | 'audit'>('overview')
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const initialTab = (() => { const t = searchParams.get('tab'); return VALID_TABS.includes(t as Tab) ? t as Tab : 'overview' })()
+  const [tab, setTab] = useState<Tab>(initialTab)
+
+  function changeTab(t: Tab) {
+    setTab(t)
+    router.replace(`/dashboard/admin/employees/${emp.id}?tab=${t}`, { scroll: false })
+  }
   const [showPtoHistory, setShowPtoHistory] = useState(false)
   const [leaveStatus, setLeaveStatus] = useState<'all' | 'pending' | 'approved' | 'denied'>('all')
   const [earlyClockIn, setEarlyClockIn] = useState(emp.early_clock_in)
@@ -487,14 +501,14 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
 
   const filteredLeave = leaveStatus === 'all' ? leaveRequests : leaveRequests.filter(r => r.status === leaveStatus)
 
-  const TABS = [
+  const TABS: { id: Tab; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'time', label: `Time Log (${entries.length})` },
     { id: 'leave', label: `Leave (${leaveRequests.length})` },
     { id: 'payroll', label: 'Payroll' },
     { id: 'pto', label: 'PTO' },
     { id: 'audit', label: `Audit Trail (${auditLog.length})` },
-  ] as const
+  ]
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
@@ -572,13 +586,27 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
         )
       })()}
 
-      {/* Tabs */}
-      <div className="tabs" style={{ marginBottom: 16 }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
-            {t.label}
-          </button>
-        ))}
+      {/* Tabs + Prev/Next nav */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div className="tabs" style={{ marginBottom: 0 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => changeTab(t.id)} className={`tab-btn ${tab === t.id ? 'active' : ''}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 12 }}>
+          {prevEmpId && (
+            <Link href={`/dashboard/admin/employees/${prevEmpId}?tab=${tab}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', whiteSpace: 'nowrap' }}>
+              ← Prev
+            </Link>
+          )}
+          {nextEmpId && (
+            <Link href={`/dashboard/admin/employees/${nextEmpId}?tab=${tab}`} style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', textDecoration: 'none', padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--surface)', whiteSpace: 'nowrap' }}>
+              Next →
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* ── Overview ── */}
