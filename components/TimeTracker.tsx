@@ -272,6 +272,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   const [cancellingOt, setCancellingOt] = useState<string | null>(null)
 
   const status = getStatus(entry)
+  const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date())
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -488,9 +489,9 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
                     <td>{e.clock_out ? toTime(e.clock_out) : '—'}</td>
                     <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{e.total_hours ?? '—'}</td>
                     <td>
-                      {e.clock_out && (!isLocked(e.date) || unlockedDates.includes(e.date))
+                      {(e.date === todayLA && e.clock_out) || unlockedDates.includes(e.date)
                         ? <button onClick={() => setEditingEntry(e)} style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}>Edit</button>
-                        : isLocked(e.date) && !unlockedDates.includes(e.date) ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Locked</span> : null}
+                        : e.date !== todayLA ? <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Locked</span> : null}
                     </td>
                   </tr>
                 ))}
