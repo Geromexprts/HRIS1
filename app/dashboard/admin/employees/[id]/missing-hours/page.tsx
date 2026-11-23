@@ -55,6 +55,7 @@ export default async function MissingHoursPage({
     { data: emp },
     { data: timeEntries },
     { data: leaveRequests },
+    { data: tagOverrides },
   ] = await Promise.all([
     supabaseAdmin
       .from('employees')
@@ -73,6 +74,12 @@ export default async function MissingHoursPage({
       .eq('employee_id', id)
       .lte('start_date', periodEnd)
       .gte('end_date', periodStart),
+    supabaseAdmin
+      .from('day_tag_overrides')
+      .select('date, tag')
+      .eq('employee_id', id)
+      .gte('date', periodStart)
+      .lte('date', periodEnd),
   ])
 
   if (!emp) redirect('/dashboard/admin/employees')
@@ -99,14 +106,29 @@ export default async function MissingHoursPage({
     ? emp.employment_end_date
     : periodEnd
 
+  const tagOverrideMap: Record<string, string> = {}
+  for (const o of tagOverrides ?? []) {
+    tagOverrideMap[o.date] = o.tag
+  }
+
   const rows = genDays(periodStart, periodEnd)
-    .filter(d => isBusinessDay(d) && d >= effectiveStart && d <= effectiveEnd)
+    .filter(d => {
+      const override = tagOverrideMap[d]
+      // Skip days explicitly marked as 'off' or non-business days
+      if (override === 'off') return false
+      return isBusinessDay(d) && d >= effectiveStart && d <= effectiveEnd
+    })
     .map(date => {
+      const override = tagOverrideMap[date]
       const entry = entriesByDate[date]
       const leaves = leavesByDate[date] ?? []
       const approvedPaidLeave = leaves.find(l => l.status === 'approved' && l.leave_type !== 'unpaid')
+      const approvedUnpaidLeave = leaves.find(l => l.status === 'approved' && l.leave_type === 'unpaid')
 
-      const regularHours = approvedPaidLeave
+      // Tag overrides take precedence: admin explicitly marked this day
+      const overrideCovered = override === 'paid_leave' || override === 'unpaid_leave' || override === 'worked'
+
+      const regularHours = (approvedPaidLeave || overrideCovered || approvedUnpaidLeave)
         ? 8
         : entry
           ? Math.min(entry.total_hours ?? 0, 8)
@@ -115,23 +137,23 @@ export default async function MissingHoursPage({
 
       const reasons: string[] = []
       if (missingHours > 0) {
-        if (!entry && leaves.length === 0) {
+        if (!entry && leaves.length === 0 && !override) {
           reasons.push('No time entry')
         } else if (entry && (entry.total_hours ?? 0) < 8) {
           reasons.push(`Short: only ${fmtH(Math.min(entry.total_hours ?? 0, 8))} logged`)
         }
         for (const l of leaves) {
-          if (l.status !== 'approved' || l.leave_type === 'unpaid') {
-            const typeLabel = l.leave_type === 'unpaid' ? 'Unpaid PTO' : 'Paid PTO'
+          if (l.status !== 'approved') {
+            const typeLabel = l.leave_type === 'unpaid' ? 'Unpaid TO' : 'Paid Leave'
             const statusLabel = l.status === 'pending' ? '(Pending)' : l.status === 'denied' ? '(Denied)' : ''
             reasons.push(`${typeLabel}${statusLabel ? ' ' + statusLabel : ''}`)
           }
         }
       }
 
-      return { date, entry, leaves, approvedPaidLeave, regularHours, missingHours, reasons }
+      return { date, entry, leaves, approvedPaidLeave, approvedUnpaidLeave, override, regularHours, missingHours, reasons }
     })
-    .filter(r => r.missingHours > 0 || r.leaves.length > 0)
+    .filter(r => r.missingHours > 0 || r.leaves.length > 0 || r.override === 'paid_leave' || r.override === 'unpaid_leave')
 
   const totalMissing = rows.reduce((s, r) => s + r.missingHours, 0)
   const missingDateCount = rows.filter(r => r.missingHours > 0).length
@@ -201,8 +223,12 @@ export default async function MissingHoursPage({
                   </td>
                   <td style={{ fontVariantNumeric: 'tabular-nums', color: 'var(--text-muted)' }}>8h</td>
                   <td style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {row.approvedPaidLeave ? (
-                      <span style={{ color: 'var(--green)' }}>8h (Paid PTO)</span>
+                    {row.approvedPaidLeave || row.override === 'paid_leave' ? (
+                      <span style={{ color: 'var(--green)' }}>8h (Paid Leave)</span>
+                    ) : row.approvedUnpaidLeave || row.override === 'unpaid_leave' ? (
+                      <span style={{ color: 'var(--amber)' }}>8h (Unpaid TO)</span>
+                    ) : row.override === 'worked' ? (
+                      <span style={{ color: 'var(--green)' }}>8h (Admin tagged)</span>
                     ) : row.entry ? (
                       <span style={{ color: (row.entry.total_hours ?? 0) < 8 ? 'var(--amber)' : 'var(--green)' }}>
                         {fmtH(Math.min(row.entry.total_hours ?? 0, 8))}
@@ -217,7 +243,7 @@ export default async function MissingHoursPage({
                         {row.leaves.map((l, i) => (
                           <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5 }}>
                             <span style={{ color: l.leave_type === 'unpaid' ? 'var(--amber)' : 'var(--green)', fontWeight: 500 }}>
-                              {l.leave_type === 'unpaid' ? 'Unpaid' : 'Paid'} PTO
+                              {l.leave_type === 'unpaid' ? 'Unpaid TO' : 'Paid Leave'}
                             </span>
                             <span className={`badge ${l.status === 'approved' ? 'badge-green' : l.status === 'pending' ? 'badge-amber' : 'badge-red'}`} style={{ fontSize: 10 }}>
                               {l.status}
@@ -225,6 +251,8 @@ export default async function MissingHoursPage({
                           </div>
                         ))}
                       </div>
+                    ) : row.override && row.override !== 'missing' ? (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>Admin override: {row.override.replace('_', ' ')}</span>
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>
                     )}
@@ -235,9 +263,11 @@ export default async function MissingHoursPage({
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
                     {row.reasons.length > 0
                       ? row.reasons.join(' · ')
-                      : row.approvedPaidLeave
-                        ? 'Approved paid PTO'
-                        : '—'}
+                      : row.approvedPaidLeave || row.override === 'paid_leave'
+                        ? 'Approved paid leave'
+                        : row.approvedUnpaidLeave || row.override === 'unpaid_leave'
+                          ? 'Approved unpaid TO'
+                          : '—'}
                   </td>
                   <td>
                     <Link

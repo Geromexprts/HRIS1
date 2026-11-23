@@ -157,7 +157,7 @@ function laInputToUTC(localStr: string): string {
   return new Date(Date.UTC(year, month - 1, day, hours + 7, minutes)).toISOString()
 }
 
-export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAccrualHistory = [], leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0 }: {
+export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAccrualHistory = [], leaveRequests: initialLeaveRequests, timeEntries, deductionRow, auditLog, payslipHistory, periodStart, periodEnd, prevPeriodStart, prevPeriodEnd, approvedOtHours = 0, initialOtRequests = [] }: {
   emp: Emp
   managerName: string | null
   approverName: string | null
@@ -173,6 +173,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
   prevPeriodStart?: string
   prevPeriodEnd?: string
   approvedOtHours?: number
+  initialOtRequests?: { date: string; ot_hours: number; status: string }[]
 }) {
   const [tab, setTab] = useState<'overview' | 'time' | 'leave' | 'payroll' | 'audit'>('overview')
   const [showPtoHistory, setShowPtoHistory] = useState(false)
@@ -208,7 +209,7 @@ export function EmployeeProfileView({ emp, managerName, approverName, pto, ptoAc
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo] = useState('')
   const [viewApprovedOtHours, setViewApprovedOtHours] = useState(approvedOtHours)
-  const [otRequests, setOtRequests] = useState<{ date: string; ot_hours: number; status: string }[]>([])
+  const [otRequests, setOtRequests] = useState<{ date: string; ot_hours: number; status: string }[]>(initialOtRequests)
   const [editingEntry, setEditingEntry] = useState<TimeEntry | null>(null)
   const [editClockIn, setEditClockIn] = useState('')
   const [editClockOut, setEditClockOut] = useState('')

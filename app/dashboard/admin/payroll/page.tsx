@@ -21,6 +21,7 @@ export default async function PayrollPage() {
     { data: ptoBalances },
     { data: deductions },
     { data: approvedOtRows },
+    { data: allTagOverrides },
   ] = await Promise.all([
     supabaseAdmin
       .from('employees')
@@ -50,6 +51,11 @@ export default async function PayrollPage() {
       .from('ot_requests')
       .select('employee_id, ot_hours')
       .eq('status', 'approved')
+      .gte('date', periodStart)
+      .lte('date', periodEnd),
+    supabaseAdmin
+      .from('day_tag_overrides')
+      .select('employee_id, date, tag')
       .gte('date', periodStart)
       .lte('date', periodEnd),
   ])
@@ -137,6 +143,21 @@ export default async function PayrollPage() {
     workingDaysMap[emp.id] = effectiveStart <= effectiveEnd
       ? businessDaysBetween(effectiveStart, effectiveEnd)
       : 0
+  }
+
+  // Apply day_tag_overrides: adjust working days / paid / unpaid PTO per employee
+  for (const o of allTagOverrides ?? []) {
+    const dow = new Date(o.date + 'T12:00:00Z').getUTCDay()
+    const isBizDay = dow !== 0 && dow !== 6
+    if (o.tag === 'off' && isBizDay) {
+      workingDaysMap[o.employee_id] = Math.max(0, (workingDaysMap[o.employee_id] ?? 0) - 1)
+    } else if (o.tag === 'paid_leave') {
+      ptoPaidByEmp[o.employee_id] = (ptoPaidByEmp[o.employee_id] ?? 0) + 1
+      leaveMap[o.employee_id] = (leaveMap[o.employee_id] ?? 0) + 1
+    } else if (o.tag === 'unpaid_leave') {
+      ptoUnpaidByEmp[o.employee_id] = (ptoUnpaidByEmp[o.employee_id] ?? 0) + 1
+      leaveMap[o.employee_id] = (leaveMap[o.employee_id] ?? 0) + 1
+    }
   }
 
   type DeductionRow = {

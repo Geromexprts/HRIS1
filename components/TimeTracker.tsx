@@ -114,6 +114,56 @@ function EditModal({ entry, onClose, onSave }: { entry: TimeEntry; onClose: () =
   )
 }
 
+function AddPastEntryModal({ date, onClose, onSave }: { date: string; onClose: () => void; onSave: (e: TimeEntry) => void }) {
+  const [clockIn, setClockIn] = useState(`${date}T08:00`)
+  const [clockOut, setClockOut] = useState(`${date}T17:00`)
+  const [note, setNote] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    if (!clockIn || !clockOut) { setError('Both clock-in and clock-out are required.'); return }
+    setSaving(true)
+    const res = await fetch('/api/time', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add_past', date, clock_in: laInputToUTC(clockIn), clock_out: laInputToUTC(clockOut), edit_note: note || null }),
+    })
+    const data = await res.json()
+    if (!res.ok) { setError(data.error ?? 'Failed to save.'); setSaving(false); return }
+    onSave(data)
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-title">Add Time Entry</div>
+        <div className="modal-sub">{toDate(date)} · Admin-unlocked date · All times in PST</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div>
+            <label className="field-label">Clock In</label>
+            <input type="datetime-local" value={clockIn} onChange={e => setClockIn(e.target.value)} className="field-input" autoFocus />
+          </div>
+          <div>
+            <label className="field-label">Clock Out</label>
+            <input type="datetime-local" value={clockOut} onChange={e => setClockOut(e.target.value)} className="field-input" />
+          </div>
+          <div>
+            <label className="field-label">Note <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(optional)</span></label>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. forgot to clock in that day" className="field-input" />
+          </div>
+          {error && <p style={{ fontSize: 12.5, color: 'var(--red)' }}>{error}</p>}
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary" style={{ flex: 1 }}>
+            {saving ? 'Saving…' : 'Submit Entry'}
+          </button>
+          <button onClick={onClose} className="btn btn-ghost" style={{ flex: 1 }}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const OT_HOUR_OPTIONS = Array.from({ length: 20 }, (_, i) => Math.round((i + 1) * 0.5 * 10) / 10)
 
 function OtModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (r: OtRequest) => void }) {
@@ -270,6 +320,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   const [filterFrom, setFilterFrom] = useState('')
   const [filterTo, setFilterTo] = useState('')
   const [cancellingOt, setCancellingOt] = useState<string | null>(null)
+  const [addPastDate, setAddPastDate] = useState<string | null>(null)
 
   const status = getStatus(entry)
   const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date())
@@ -335,10 +386,16 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
     return true
   })
 
+  // Unlocked past dates with no existing entry — employee can add a new one
+  const missingUnlockedDates = unlockedDates
+    .filter(d => d < todayLA && !entries.some(e => e.date === d))
+    .sort((a, b) => b.localeCompare(a))
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {editingEntry && <EditModal entry={editingEntry} onClose={() => setEditingEntry(null)} onSave={handleEditSave} />}
       {showOtModal && <OtModal onClose={() => setShowOtModal(false)} onSubmit={r => { setOtRequests(prev => [r, ...prev]); setShowOtModal(false) }} />}
+      {addPastDate && <AddPastEntryModal date={addPastDate} onClose={() => setAddPastDate(null)} onSave={e => { setEntries(prev => [e, ...prev].sort((a, b) => b.date.localeCompare(a.date))); setAddPastDate(null) }} />}
 
       {/* Clock card */}
       <div className="card">
@@ -444,6 +501,43 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
           </div>
         )}
       </div>
+
+      {/* Missing unlocked dates — employee can add new entries */}
+      {missingUnlockedDates.length > 0 && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+          <div style={{ padding: '14px 24px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Unlocked Missing Entries</div>
+            <span style={{ fontSize: 12, color: 'var(--amber)', fontWeight: 500 }}>{missingUnlockedDates.length} date{missingUnlockedDates.length !== 1 ? 's' : ''} need attention</span>
+          </div>
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {missingUnlockedDates.map(d => (
+                  <tr key={d}>
+                    <td style={{ fontWeight: 500 }}>{toDate(d)}</td>
+                    <td><span className="badge badge-amber">Missing entry</span></td>
+                    <td>
+                      <button
+                        onClick={() => setAddPastDate(d)}
+                        style={{ fontSize: 12, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 500 }}
+                      >
+                        Add Entry
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* All time entries */}
       {entries.length > 0 && (

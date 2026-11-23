@@ -31,10 +31,54 @@ export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { action } = await req.json()
+  const body = await req.json()
+  const { action } = body
   const employeeId = session.user.id
   const now = new Date().toISOString()
   const today = laToday()
+
+  // Add a new time entry for a past unlocked date
+  if (action === 'add_past') {
+    const { date: pastDate, clock_in: pastClockIn, clock_out: pastClockOut, edit_note } = body
+    if (!pastDate || !pastClockIn || !pastClockOut) {
+      return NextResponse.json({ error: 'date, clock_in, and clock_out are required.' }, { status: 400 })
+    }
+    const { data: unlock } = await supabaseAdmin
+      .from('ot_date_unlocks').select('id').eq('employee_id', employeeId).eq('date', pastDate).maybeSingle()
+    if (!unlock) {
+      return NextResponse.json({ error: 'Admin unlock required to add an entry for this date.' }, { status: 403 })
+    }
+    const { data: existing } = await supabaseAdmin
+      .from('time_entries').select('id').eq('employee_id', employeeId).eq('date', pastDate).maybeSingle()
+    if (existing) {
+      return NextResponse.json({ error: 'An entry already exists for this date.' }, { status: 409 })
+    }
+    const { data: empRow } = await supabaseAdmin.from('employees').select('no_break_deduction').eq('id', employeeId).single()
+    const totalHours = calcTotalHours(pastClockIn, pastClockOut, empRow?.no_break_deduction ?? false)
+    const { data, error } = await supabaseAdmin
+      .from('time_entries')
+      .insert({ employee_id: employeeId, date: pastDate, clock_in: pastClockIn, clock_out: pastClockOut, total_hours: totalHours, is_edited: true, edit_note: edit_note ?? 'Employee added past entry' })
+      .select().single()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    await supabaseAdmin.from('audit_log').insert({
+      employee_id: employeeId,
+      action: 'time_entry_added',
+      details: { entry_id: data.id, date: pastDate, clock_in: pastClockIn, clock_out: pastClockOut, total_hours: totalHours, added_by: session.user.email, edit_note: edit_note ?? null, source: 'employee_self_add_unlocked' },
+    })
+    const { data: admins } = await supabaseAdmin.from('employees').select('id').eq('role', 'admin').neq('id', employeeId)
+    const { data: empName } = await supabaseAdmin.from('employees').select('name').eq('id', employeeId).single()
+    if (admins?.length) {
+      await supabaseAdmin.from('notifications').insert(
+        admins.map(a => ({
+          employee_id: a.id,
+          title: 'Past Time Entry Added',
+          body: `${empName?.name ?? session.user.email} added a time entry for ${pastDate}.`,
+          link: `/dashboard/admin/employees/${employeeId}`,
+        }))
+      )
+    }
+    return NextResponse.json(data, { status: 201 })
+  }
 
   const { data: existing } = await supabaseAdmin
     .from('time_entries')
