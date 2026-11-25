@@ -375,7 +375,7 @@ export function TimeTracker({ employeeId, todayEntry, recentEntries, earlyClockI
   }
 
   function handleEditSave(updated: TimeEntry) {
-    if (updated.date === new Date().toISOString().split('T')[0]) setEntry(updated)
+    if (updated.date === new Intl.DateTimeFormat('en-CA', { timeZone: LA_TZ }).format(new Date())) setEntry(updated)
     setEntries(prev => prev.map(e => e.id === updated.id ? updated : e))
     setEditingEntry(null)
   }
