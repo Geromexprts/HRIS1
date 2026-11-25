@@ -40,10 +40,13 @@ function laInputToUTC(localStr: string): string {
   const laParts = new Intl.DateTimeFormat('en-US', {
     timeZone: LA_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
   }).formatToParts(new Date(utcGuess))
-  const laH = parseInt(laParts.find(p => p.type === 'hour')?.value ?? '0')
+  const laH = parseInt(laParts.find(p => p.type === 'hour')?.value ?? '0') % 24
   const laM = parseInt(laParts.find(p => p.type === 'minute')?.value ?? '0')
-  const offsetMs = ((hours - laH) * 60 + (minutes - laM)) * 60000
-  return new Date(utcGuess + offsetMs).toISOString()
+  // Correct for day-wrap: when UTC guess and local time are on different days
+  let diffMinutes = (hours - laH) * 60 + (minutes - laM)
+  if (diffMinutes > 12 * 60) diffMinutes -= 24 * 60
+  if (diffMinutes < -12 * 60) diffMinutes += 24 * 60
+  return new Date(utcGuess + diffMinutes * 60000).toISOString()
 }
 
 function isLocked(dateStr: string) {
