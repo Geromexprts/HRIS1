@@ -168,13 +168,9 @@ export async function PUT(req: NextRequest) {
 
   if (fetchError || !existing) return NextResponse.json({ error: 'Entry not found' }, { status: 404 })
 
-  // Enforce pay period lock — but never block an active (not yet clocked out) entry
-  if (existing.clock_out && isPayPeriodLocked(existing.date)) {
-    return NextResponse.json({ error: 'This pay period is locked and cannot be edited.' }, { status: 403 })
-  }
-
-  // Past-date edits require admin unlock (same table as OT unlocks)
+  // Past-date edits require admin unlock; check this first so an unlock can bypass the pay period lock
   const todayLA = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date())
+  let hasAdminUnlock = false
   if (existing.date < todayLA) {
     const { data: unlock } = await supabaseAdmin
       .from('ot_date_unlocks')
@@ -186,6 +182,13 @@ export async function PUT(req: NextRequest) {
     if (!unlock) {
       return NextResponse.json({ error: 'Editing past time entries requires admin approval. Please contact your manager.' }, { status: 403 })
     }
+    hasAdminUnlock = true
+  }
+
+  // Enforce pay period lock — but never block an active (not yet clocked out) entry,
+  // and never block a date the admin has explicitly unlocked
+  if (existing.clock_out && !hasAdminUnlock && isPayPeriodLocked(existing.date)) {
+    return NextResponse.json({ error: 'This pay period is locked and cannot be edited.' }, { status: 403 })
   }
 
   // Log the original values to audit_log before overwriting
